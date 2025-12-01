@@ -159,6 +159,14 @@ class UIManager {
         this.render();
       }
 
+      // Re-render on data changes (shopping, tasks, clifford, quickAdd)
+      if (state.shopping !== prevState?.shopping ||
+          state.tasks !== prevState?.tasks ||
+          state.clifford !== prevState?.clifford ||
+          JSON.stringify(state.quickAdd) !== JSON.stringify(prevState?.quickAdd)) {
+        this.render();
+      }
+
       // Update connection indicator
       if (state.connectionState !== prevState?.connectionState) {
         this.updateConnectionIndicator();
@@ -930,6 +938,8 @@ class UIManager {
       await this.joinHousehold();
     } else if (form.id === 'add-item-form') {
       await this.submitAddForm(form);
+    } else if (form.id === 'edit-item-form') {
+      await this.submitEditForm(form);
     }
   }
 
@@ -1048,6 +1058,44 @@ class UIManager {
   }
 
   /**
+   * Submit edit form
+   */
+  async submitEditForm(form) {
+    const formData = new FormData(form);
+    const type = formData.get('type');
+    const id = formData.get('id');
+    const name = formData.get('name');
+    const notes = formData.get('notes') || '';
+
+    const updates = { name, notes };
+
+    // Add task-specific fields
+    if (type !== 'shopping') {
+      const assignee = formData.get('assignee') || null;
+      const dueDate = formData.get('due_date') || null;
+      updates.assignee = assignee;
+      updates.due_date = dueDate;
+    }
+
+    // Update the item
+    if (type === 'shopping') {
+      await db.updateShoppingItem(id, updates);
+    } else if (type === 'tasks') {
+      await db.updateTask(id, updates);
+    } else if (type === 'clifford') {
+      await db.updateClifford(id, updates);
+    }
+
+    // Close modal
+    const formContainer = document.getElementById('add-form-container');
+    const tempContainer = document.getElementById('edit-form-temp');
+    if (formContainer) formContainer.innerHTML = '';
+    if (tempContainer) tempContainer.remove();
+
+    this.showToast(`${name} updated!`, 'success');
+  }
+
+  /**
    * Quick add item
    */
   async quickAddItem(type, name) {
@@ -1106,8 +1154,98 @@ class UIManager {
    * Edit item
    */
   editItem(type, id) {
-    // TODO: Implement edit functionality
-    this.showToast('Edit functionality coming soon', 'info');
+    // Get the item
+    let item;
+    if (type === 'shopping') {
+      item = store.getShopping().find(i => i.id === id);
+    } else if (type === 'tasks') {
+      item = store.getTasks().find(i => i.id === id);
+    } else if (type === 'clifford') {
+      item = store.getClifford().find(i => i.id === id);
+    }
+
+    if (!item) return;
+
+    // Show edit modal
+    this.showEditForm(type, item);
+  }
+
+  /**
+   * Show edit form
+   */
+  showEditForm(type, item) {
+    const container = document.getElementById('add-form-container') ||
+                      document.querySelector('.view-container');
+
+    if (!container) return;
+
+    const isShopping = type === 'shopping';
+
+    const modalHtml = `
+      <div class="modal-overlay" data-action="close-modal">
+        <div class="modal" onclick="event.stopPropagation()">
+          <h2>${this.t('edit')}</h2>
+          <form id="edit-item-form">
+            <input type="hidden" name="type" value="${type}">
+            <input type="hidden" name="id" value="${item.id}">
+            <input
+              type="text"
+              name="name"
+              placeholder="${this.t('name')}"
+              value="${this.escapeHtml(item.name)}"
+              required
+              autofocus
+            />
+            ${!isShopping ? `
+              <input
+                type="text"
+                name="assignee"
+                placeholder="${this.t('assignee')}"
+                value="${item.assignee || ''}"
+              />
+              <input
+                type="date"
+                name="due_date"
+                placeholder="${this.t('dueDate')}"
+                value="${item.due_date || ''}"
+              />
+            ` : ''}
+            <textarea
+              name="notes"
+              placeholder="${this.t('notes')}"
+              rows="3"
+            >${item.notes || ''}</textarea>
+            <div class="modal-actions">
+              <button type="button" class="btn btn-secondary" data-action="close-modal">${this.t('cancel')}</button>
+              <button type="submit" class="btn btn-primary">${this.t('save')}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    // If add-form-container exists, use it, otherwise append to container
+    const formContainer = document.getElementById('add-form-container');
+    if (formContainer) {
+      formContainer.innerHTML = modalHtml;
+    } else {
+      // Create temporary container
+      const tempDiv = document.createElement('div');
+      tempDiv.id = 'edit-form-temp';
+      tempDiv.innerHTML = modalHtml;
+      container.appendChild(tempDiv);
+    }
+
+    // Add close handler
+    document.querySelector('.modal-overlay').addEventListener('click', (e) => {
+      if (e.target.classList.contains('modal-overlay') ||
+          e.target.dataset.action === 'close-modal') {
+        const formContainer = document.getElementById('add-form-container');
+        const tempContainer = document.getElementById('edit-form-temp');
+        if (formContainer) formContainer.innerHTML = '';
+        if (tempContainer) tempContainer.remove();
+      }
+    });
   }
 
   /**
