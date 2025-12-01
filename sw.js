@@ -5,27 +5,27 @@
 
 const CACHE_NAME = 'thibault-v1';
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/styles.css',
-  '/manifest.json',
-  '/js/app.js',
-  '/js/auth.js',
-  '/js/config.js',
-  '/js/connection.js',
-  '/js/database.js',
-  '/js/queue.js',
-  '/js/realtime.js',
-  '/js/store.js',
-  '/js/ui.js',
-  '/icons/icon-72x72.png',
-  '/icons/icon-96x96.png',
-  '/icons/icon-128x128.png',
-  '/icons/icon-144x144.png',
-  '/icons/icon-152x152.png',
-  '/icons/icon-192x192.png',
-  '/icons/icon-384x384.png',
-  '/icons/icon-512x512.png'
+  './',
+  './index.html',
+  './styles.css',
+  './manifest.json',
+  './js/app.js',
+  './js/auth.js',
+  './js/config.js',
+  './js/connection.js',
+  './js/database.js',
+  './js/queue.js',
+  './js/realtime.js',
+  './js/store.js',
+  './js/ui.js',
+  './icons/icon-72x72.png',
+  './icons/icon-96x96.png',
+  './icons/icon-128x128.png',
+  './icons/icon-144x144.png',
+  './icons/icon-152x152.png',
+  './icons/icon-192x192.png',
+  './icons/icon-384x384.png',
+  './icons/icon-512x512.png'
 ];
 
 /**

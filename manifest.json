@@ -2,7 +2,7 @@
   "name": "Thibault - Home Management",
   "short_name": "Thibault",
   "description": "Household management app for shopping, tasks, and family organization",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#191919",
   "theme_color": "#37C5AB",
