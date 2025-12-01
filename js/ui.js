@@ -144,8 +144,18 @@ class UIManager {
 
     // Subscribe to state changes
     store.subscribe((state, prevState) => {
+      // Re-render on loading state change
+      if (state.loading !== prevState?.loading) {
+        this.render();
+      }
+
       // Re-render on view change
       if (state.currentView !== prevState?.currentView) {
+        this.render();
+      }
+
+      // Re-render on user/household change
+      if (state.user !== prevState?.user || state.household !== prevState?.household) {
         this.render();
       }
 
