@@ -454,7 +454,7 @@ class UIManager {
           <div class="upcoming-group">
             <h3>${this.t('tasks')}</h3>
             <div class="list">
-              ${tasks.map(task => this.renderTaskItem(task, true)).join('')}
+              ${tasks.map(task => this.renderTaskItem(task, true, 'tasks')).join('')}
             </div>
           </div>
         ` : ''}
@@ -463,7 +463,7 @@ class UIManager {
           <div class="upcoming-group">
             <h3>${this.t('clifford')}</h3>
             <div class="list">
-              ${clifford.map(item => this.renderTaskItem(item, true)).join('')}
+              ${clifford.map(item => this.renderTaskItem(item, true, 'clifford')).join('')}
             </div>
           </div>
         ` : ''}
@@ -598,7 +598,7 @@ class UIManager {
             <span class="collapse-icon">▼</span>
           </div>
           <div class="list" id="active-tasks-list">
-            ${active.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : active.map(item => this.renderTaskItem(item)).join('')}
+            ${active.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : active.map(item => this.renderTaskItem(item, false, 'tasks')).join('')}
           </div>
         </div>
 
@@ -608,7 +608,7 @@ class UIManager {
             <span class="collapse-icon">▼</span>
           </div>
           <div class="list" id="completed-tasks-list" style="display: none;">
-            ${completed.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : completed.map(item => this.renderTaskItem(item)).join('')}
+            ${completed.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : completed.map(item => this.renderTaskItem(item, false, 'tasks')).join('')}
           </div>
         </div>
 
@@ -657,7 +657,7 @@ class UIManager {
             <span class="collapse-icon">▼</span>
           </div>
           <div class="list" id="active-clifford-list">
-            ${active.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : active.map(item => this.renderTaskItem(item)).join('')}
+            ${active.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : active.map(item => this.renderTaskItem(item, false, 'clifford')).join('')}
           </div>
         </div>
 
@@ -667,7 +667,7 @@ class UIManager {
             <span class="collapse-icon">▼</span>
           </div>
           <div class="list" id="completed-clifford-list" style="display: none;">
-            ${completed.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : completed.map(item => this.renderTaskItem(item)).join('')}
+            ${completed.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : completed.map(item => this.renderTaskItem(item, false, 'clifford')).join('')}
           </div>
         </div>
 
@@ -679,8 +679,8 @@ class UIManager {
   /**
    * Render task item (used for both tasks and clifford)
    */
-  renderTaskItem(item, compact = false) {
-    const isPending = queueManager.hasPendingOperations(item.type || 'tasks', item.id);
+  renderTaskItem(item, compact = false, type = 'tasks') {
+    const isPending = queueManager.hasPendingOperations(type, item.id);
     const dueStatus = this.getDueStatus(item.due_date);
 
     return `
@@ -690,7 +690,7 @@ class UIManager {
           class="item-checkbox"
           ${item.completed ? 'checked' : ''}
           data-action="toggle-task"
-          data-type="${item.type || 'tasks'}"
+          data-type="${type}"
           data-id="${item.id}"
         />
         <div class="item-content">
@@ -704,8 +704,8 @@ class UIManager {
         ${!compact ? `
           <div class="item-actions">
             ${isPending ? '<span class="pending-indicator">⏳</span>' : ''}
-            <button class="btn-icon-small" data-action="edit-item" data-type="${item.type || 'tasks'}" data-id="${item.id}">✎</button>
-            <button class="btn-icon-small" data-action="delete-item" data-type="${item.type || 'tasks'}" data-id="${item.id}">×</button>
+            <button class="btn-icon-small" data-action="edit-item" data-type="${type}" data-id="${item.id}">✎</button>
+            <button class="btn-icon-small" data-action="delete-item" data-type="${type}" data-id="${item.id}">×</button>
           </div>
         ` : ''}
       </div>
