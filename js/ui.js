@@ -59,7 +59,12 @@ const translations = {
     copyInviteCode: 'Copy Invite Code',
     inviteCodeCopied: 'Invite code copied!',
     admin: 'Admin',
-    member: 'Member'
+    member: 'Member',
+    you: 'You',
+    noMembers: 'No members yet',
+    removeMember: 'Remove member',
+    confirmRemoveMember: 'Are you sure you want to remove {email} from the household?',
+    memberRemoved: 'Member removed successfully'
   },
   af: {
     appName: 'Thibault',
@@ -114,7 +119,12 @@ const translations = {
     copyInviteCode: 'Kopieer Uitnodigingskode',
     inviteCodeCopied: 'Uitnodigingskode gekopieer!',
     admin: 'Administrateur',
-    member: 'Lid'
+    member: 'Lid',
+    you: 'Jy',
+    noMembers: 'Nog geen lede nie',
+    removeMember: 'Verwyder lid',
+    confirmRemoveMember: 'Is jy seker jy wil {email} uit die huishouding verwyder?',
+    memberRemoved: 'Lid suksesvol verwyder'
   }
 };
 
@@ -780,6 +790,11 @@ class UIManager {
           </div>
 
           <div class="settings-section">
+            <h3>${this.t('householdMembers')}</h3>
+            ${this.renderHouseholdMembers()}
+          </div>
+
+          <div class="settings-section">
             <h3>${this.t('manageQuickAdd')}</h3>
             <button class="btn btn-secondary" data-action="manage-quick-add" data-type="shopping">
               ${this.t('shopping')}
@@ -796,6 +811,50 @@ class UIManager {
         <div class="settings-section">
           <button class="btn btn-danger" data-action="sign-out">${this.t('signOut')}</button>
         </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Render household members list
+   */
+  renderHouseholdMembers() {
+    const members = store.getHouseholdMembers();
+    const currentUser = authManager.getUser();
+    const household = authManager.getCurrentHousehold();
+    const isAdmin = household && household.userRole === 'admin';
+
+    if (!members || members.length === 0) {
+      return `<p class="empty-message">${this.t('noMembers')}</p>`;
+    }
+
+    return `
+      <div class="members-list">
+        ${members.map(member => {
+          const userEmail = member.users?.email || 'Unknown';
+          const isCurrentUser = member.user_id === currentUser?.id;
+          const roleText = this.t(member.role) || member.role;
+
+          return `
+            <div class="member-item">
+              <div class="member-info">
+                <div class="member-email">${this.escapeHtml(userEmail)}</div>
+                <span class="badge ${member.role === 'admin' ? 'badge-warning' : ''}">${roleText}</span>
+                ${isCurrentUser ? `<span class="badge">${this.t('you')}</span>` : ''}
+              </div>
+              ${isAdmin && !isCurrentUser ? `
+                <button
+                  class="btn-icon-small btn-danger"
+                  data-action="remove-member"
+                  data-member-id="${member.id}"
+                  data-email="${this.escapeHtml(userEmail)}"
+                  title="${this.t('removeMember')}">
+                  ×
+                </button>
+              ` : ''}
+            </div>
+          `;
+        }).join('')}
       </div>
     `;
   }
@@ -911,6 +970,10 @@ class UIManager {
 
       case 'manage-quick-add':
         this.manageQuickAdd(target.dataset.type);
+        break;
+
+      case 'remove-member':
+        await this.removeMember(target.dataset.memberId, target.dataset.email);
         break;
 
       case 'sign-out':
@@ -1114,7 +1177,7 @@ class UIManager {
    * Toggle shopping item
    */
   async toggleShopping(id) {
-    const item = store.getShopping().find(i => i.id === id);
+    const item = store.getShopping().find(i => String(i.id) === String(id));
     if (item) {
       await db.updateShoppingItem(id, { purchased: !item.purchased });
     }
@@ -1125,7 +1188,7 @@ class UIManager {
    */
   async toggleTask(type, id) {
     const items = type === 'tasks' ? store.getTasks() : store.getClifford();
-    const item = items.find(i => i.id === id);
+    const item = items.find(i => String(i.id) === String(id));
 
     if (item) {
       const updateFn = type === 'tasks' ? db.updateTask.bind(db) : db.updateClifford.bind(db);
@@ -1154,17 +1217,25 @@ class UIManager {
    * Edit item
    */
   editItem(type, id) {
-    // Get the item
+    console.log('editItem called:', { type, id, idType: typeof id });
+
+    // Get the item - convert IDs to strings for comparison
     let item;
     if (type === 'shopping') {
-      item = store.getShopping().find(i => i.id === id);
+      item = store.getShopping().find(i => String(i.id) === String(id));
     } else if (type === 'tasks') {
-      item = store.getTasks().find(i => i.id === id);
+      item = store.getTasks().find(i => String(i.id) === String(id));
     } else if (type === 'clifford') {
-      item = store.getClifford().find(i => i.id === id);
+      item = store.getClifford().find(i => String(i.id) === String(id));
     }
 
-    if (!item) return;
+    if (!item) {
+      console.error('Item not found for edit:', { type, id });
+      this.showToast('Item not found', 'error');
+      return;
+    }
+
+    console.log('Item found, showing edit form:', item);
 
     // Show edit modal
     this.showEditForm(type, item);
@@ -1174,10 +1245,16 @@ class UIManager {
    * Show edit form
    */
   showEditForm(type, item) {
+    console.log('showEditForm called:', { type, item });
+
     const container = document.getElementById('add-form-container') ||
                       document.querySelector('.view-container');
 
-    if (!container) return;
+    if (!container) {
+      console.error('No container found for edit form');
+      this.showToast('Error showing edit form', 'error');
+      return;
+    }
 
     const isShopping = type === 'shopping';
 
@@ -1270,6 +1347,34 @@ class UIManager {
   manageQuickAdd(type) {
     // TODO: Implement quick add management
     this.showToast('Quick Add management coming soon', 'info');
+  }
+
+  /**
+   * Remove household member
+   */
+  async removeMember(memberId, email) {
+    const confirmMessage = this.t('confirmRemoveMember')
+      .replace('{email}', email);
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    store.setLoading(true);
+
+    const { error } = await db.removeHouseholdMember(memberId);
+
+    store.setLoading(false);
+
+    if (error) {
+      console.error('Remove member error:', error);
+      this.showToast(error.message || 'Failed to remove member', 'error');
+    } else {
+      // Remove member from local state
+      const members = store.getHouseholdMembers().filter(m => String(m.id) !== String(memberId));
+      store.setHouseholdMembers(members);
+      this.showToast(this.t('memberRemoved'), 'success');
+    }
   }
 
   /**

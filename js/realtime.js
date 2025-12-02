@@ -290,23 +290,13 @@ class RealtimeManager {
   /**
    * Handle household members changes
    */
-  handleHouseholdMembersChange(payload) {
-    const { eventType, new: newRecord, old: oldRecord } = payload;
-    const members = store.getState().householdMembers;
+  async handleHouseholdMembersChange(payload) {
+    const { eventType } = payload;
 
-    switch (eventType) {
-      case 'INSERT':
-        if (!members.find(member => member.id === newRecord.id)) {
-          store.setHouseholdMembers([...members, newRecord]);
-        }
-        break;
-
-      case 'DELETE':
-        store.setHouseholdMembers(
-          members.filter(member => member.id !== oldRecord.id)
-        );
-        break;
-    }
+    // Reload all members on any change to get fresh data with user info joined
+    // This ensures we have the latest member list with email addresses
+    const { db } = await import('./database.js');
+    await db.loadHouseholdMembers();
   }
 }
 
