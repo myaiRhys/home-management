@@ -1129,9 +1129,25 @@ class UIManager {
     `;
 
     // Add close handler
-    container.querySelector('[data-action="close-modal"]').addEventListener('click', () => {
-      container.innerHTML = '';
-    });
+    const closeButton = container.querySelector('[data-action="close-modal"]');
+    console.log('[showAddForm] Close button found:', closeButton ? 'YES' : 'NO');
+    if (closeButton) {
+      closeButton.addEventListener('click', () => {
+        console.log('[showAddForm] Close button clicked, clearing container');
+        container.innerHTML = '';
+      });
+    }
+
+    // Also add overlay click handler
+    const overlay = container.querySelector('.modal-overlay');
+    if (overlay) {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+          console.log('[showAddForm] Overlay clicked, clearing container');
+          container.innerHTML = '';
+        }
+      });
+    }
   }
 
   /**
@@ -1387,13 +1403,22 @@ class UIManager {
    * Close modal
    */
   closeModal() {
+    console.log('[closeModal] Called');
     const formContainer = document.getElementById('add-form-container');
     const tempContainer = document.getElementById('edit-form-temp');
     const quickAddContainer = document.getElementById('quick-add-modal');
 
+    console.log('[closeModal] Containers found:', {
+      formContainer: formContainer ? 'YES' : 'NO',
+      tempContainer: tempContainer ? 'YES' : 'NO',
+      quickAddContainer: quickAddContainer ? 'YES' : 'NO'
+    });
+
     if (formContainer) formContainer.innerHTML = '';
     if (tempContainer) tempContainer.remove();
     if (quickAddContainer) quickAddContainer.remove();
+
+    console.log('[closeModal] Modals closed');
   }
 
   /**
