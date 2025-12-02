@@ -820,7 +820,7 @@ class UIManager {
    */
   renderHouseholdMembers() {
     const members = store.getHouseholdMembers();
-    const currentUser = authManager.getUser();
+    const currentUser = authManager.getCurrentUser();
     const household = authManager.getCurrentHousehold();
     const isAdmin = household && household.userRole === 'admin';
 
