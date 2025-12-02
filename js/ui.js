@@ -178,6 +178,11 @@ class UIManager {
         this.render();
       }
 
+      // Re-render on tasks drawer change
+      if (state.tasksDrawer !== prevState?.tasksDrawer) {
+        this.render();
+      }
+
       // Re-render on user/household change
       if (state.user !== prevState?.user || state.household !== prevState?.household) {
         this.render();
