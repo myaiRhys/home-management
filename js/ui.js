@@ -1109,6 +1109,23 @@ class UIManager {
   }
 
   /**
+   * Get household member options for dropdown
+   */
+  getMemberOptions(selectedUserId = null) {
+    const members = store.getHouseholdMembers();
+    const options = members.map(member => {
+      const name = member.users?.email || 'Unknown';
+      const isSelected = member.user_id === selectedUserId ? 'selected' : '';
+      return `<option value="${member.user_id}" ${isSelected}>${this.escapeHtml(name)}</option>`;
+    }).join('');
+
+    return `
+      <option value="">-- ${this.t('assignee')} --</option>
+      ${options}
+    `;
+  }
+
+  /**
    * Show add form
    */
   showAddForm(type) {
@@ -1131,11 +1148,9 @@ class UIManager {
               autofocus
             />
             ${!isShopping ? `
-              <input
-                type="text"
-                name="assignee"
-                placeholder="${this.t('assignee')}"
-              />
+              <select name="assignee" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary); margin-bottom: 0.5rem;">
+                ${this.getMemberOptions()}
+              </select>
               <input
                 type="date"
                 name="due_date"
@@ -1360,12 +1375,9 @@ class UIManager {
               autofocus
             />
             ${!isShopping ? `
-              <input
-                type="text"
-                name="assignee"
-                placeholder="${this.t('assignee')}"
-                value="${item.assignee || ''}"
-              />
+              <select name="assignee" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary); margin-bottom: 0.5rem;">
+                ${this.getMemberOptions(item.assignee)}
+              </select>
               <input
                 type="date"
                 name="due_date"
