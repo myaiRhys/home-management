@@ -227,6 +227,10 @@ class Store {
     return this.state.language;
   }
 
+  getHouseholdMembers() {
+    return this.state.householdMembers;
+  }
+
   // Convenience setters
   setUser(user) {
     this.setState({ user });

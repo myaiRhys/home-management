@@ -304,15 +304,38 @@ class DatabaseManager {
       return { data: [], error: null };
     }
 
-    const { data, error } = await this.fetch(Tables.HOUSEHOLD_MEMBERS, {
-      household_id: household.id
-    });
+    try {
+      const result = await this.executeWithTimeout(async () => {
+        const { data, error } = await supabase
+          .from(Tables.HOUSEHOLD_MEMBERS)
+          .select(`
+            id,
+            household_id,
+            user_id,
+            role,
+            created_at,
+            users!inner (
+              id,
+              email
+            )
+          `)
+          .eq('household_id', household.id)
+          .order('created_at', { ascending: true });
 
-    if (!error && data) {
-      store.setHouseholdMembers(data);
+        if (error) throw error;
+        return data;
+      });
+
+      if (result) {
+        store.setHouseholdMembers(result);
+      }
+
+      return { data: result, error: null };
+
+    } catch (error) {
+      console.error('[DB] Load household members error:', error);
+      return { data: null, error };
     }
-
-    return { data, error };
   }
 
   /**
