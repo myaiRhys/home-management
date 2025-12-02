@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Database Test</title>
+  <style>
+    body {
+      font-family: monospace;
+      padding: 20px;
+      background: #1a1a1a;
+      color: #fff;
+    }
+    button {
+      margin: 5px;
+      padding: 10px 20px;
+      background: #37C5AB;
+      border: none;
+      color: white;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    button:hover { background: #2EA58E; }
+    #output {
+      background: #252525;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      font-size: 12px;
+    }
+    .error { color: #E16259; }
+    .success { color: #37C5AB; }
+    .warning { color: #E9B949; }
+  </style>
+</head>
+<body>
+  <h1>Database Connection Test</h1>
+  <div>
+    <button onclick="testConnection()">1. Test Connection</button>
+    <button onclick="testAuth()">2. Test Auth Status</button>
+    <button onclick="listTables()">3. List All Items</button>
+    <button onclick="testDelete()">4. Test Delete (safe)</button>
+    <button onclick="checkRLS()">5. Check RLS Policies</button>
+    <button onclick="clearOutput()">Clear Output</button>
+  </div>
+  <div id="output">Click a button to run tests...</div>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+    const SUPABASE_URL = 'https://gyutgfsdtsbbymhwrqka.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd5dXRnZnNkdHNiYnltaHdycWthIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM5NzM1MDgsImV4cCI6MjA3OTU0OTUwOH0.MT8uHkOR5nmnB1VqOXelaMUM24aWiTYISmGK4VcSt4g';
+
+    window.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false
+      }
+    });
+
+    const output = document.getElementById('output');
+
+    function log(message, type = 'info') {
+      const timestamp = new Date().toLocaleTimeString();
+      const className = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warning' ? 'warning' : '';
+      output.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span>\n`;
+      console.log(message);
+    }
+
+    window.clearOutput = () => {
+      output.innerHTML = '';
+    };
+
+    window.testConnection = async () => {
+      log('Testing Supabase connection...');
+      try {
+        const { data, error } = await supabase.from('shopping').select('count');
+        if (error) {
+          log(`❌ Connection failed: ${error.message}`, 'error');
+          log(`Error code: ${error.code}`, 'error');
+          log(`Error details: ${JSON.stringify(error, null, 2)}`, 'error');
+        } else {
+          log('✅ Connected to Supabase successfully!', 'success');
+        }
+      } catch (err) {
+        log(`❌ Exception: ${err.message}`, 'error');
+      }
+    };
+
+    window.testAuth = async () => {
+      log('Checking authentication status...');
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          log(`❌ Auth error: ${error.message}`, 'error');
+        } else if (session) {
+          log('✅ User is authenticated!', 'success');
+          log(`User ID: ${session.user.id}`);
+          log(`Email: ${session.user.email}`);
+        } else {
+          log('⚠️  No active session - user not logged in', 'warning');
+          log('You need to be logged in to perform operations', 'warning');
+        }
+      } catch (err) {
+        log(`❌ Exception: ${err.message}`, 'error');
+      }
+    };
+
+    window.listTables = async () => {
+      log('Fetching items from all tables...');
+      const tables = ['shopping', 'tasks', 'clifford', 'quick_add'];
+
+      for (const table of tables) {
+        try {
+          const { data, error } = await supabase.from(table).select('*').limit(5);
+          if (error) {
+            log(`❌ ${table}: ${error.message}`, 'error');
+            if (error.message.includes('JWT')) {
+              log('   → This is an authentication error - you need to be logged in', 'warning');
+            }
+          } else {
+            log(`✅ ${table}: Found ${data.length} items`, 'success');
+            if (data.length > 0) {
+              log(`   Sample: ${JSON.stringify(data[0], null, 2)}`);
+            }
+          }
+        } catch (err) {
+          log(`❌ ${table}: Exception - ${err.message}`, 'error');
+        }
+      }
+    };
+
+    window.testDelete = async () => {
+      log('Testing delete operation...');
+      log('⚠️  This will attempt to delete, but first checking permissions', 'warning');
+
+      try {
+        // First check if we're authenticated
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          log('❌ Cannot test delete - not authenticated', 'error');
+          log('Please log in to the main app first, then try again', 'warning');
+          return;
+        }
+
+        // Try to fetch one item
+        const { data: items, error: fetchError } = await supabase
+          .from('shopping')
+          .select('*')
+          .limit(1);
+
+        if (fetchError) {
+          log(`❌ Cannot fetch items: ${fetchError.message}`, 'error');
+          return;
+        }
+
+        if (!items || items.length === 0) {
+          log('ℹ️  No items in shopping table to test delete', 'warning');
+          return;
+        }
+
+        const testItem = items[0];
+        log(`Found test item: ${testItem.name} (ID: ${testItem.id})`);
+        log('Attempting to delete...');
+
+        const { data: deleteData, error: deleteError } = await supabase
+          .from('shopping')
+          .delete()
+          .eq('id', testItem.id);
+
+        if (deleteError) {
+          log(`❌ Delete failed: ${deleteError.message}`, 'error');
+          log(`Error code: ${deleteError.code}`, 'error');
+          log(`Error details: ${JSON.stringify(deleteError, null, 2)}`, 'error');
+
+          if (deleteError.message.includes('policy')) {
+            log('🔒 This is a Row Level Security (RLS) policy error!', 'error');
+            log('The database is blocking delete operations due to RLS policies', 'error');
+          }
+        } else {
+          log('✅ Delete operation completed without error', 'success');
+          log(`Delete result: ${JSON.stringify(deleteData)}`);
+        }
+      } catch (err) {
+        log(`❌ Exception during delete test: ${err.message}`, 'error');
+      }
+    };
+
+    window.checkRLS = async () => {
+      log('Checking Row Level Security (RLS) policies...');
+      log('This will test SELECT, INSERT, UPDATE, and DELETE permissions');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        log('❌ Not authenticated - cannot check RLS policies', 'error');
+        return;
+      }
+
+      log(`Authenticated as: ${session.user.email}`);
+
+      // Test SELECT
+      const { data: selectData, error: selectError } = await supabase
+        .from('shopping')
+        .select('*')
+        .limit(1);
+      log(selectError ? `❌ SELECT: ${selectError.message}` : `✅ SELECT: OK`, selectError ? 'error' : 'success');
+
+      // Test INSERT (then delete immediately)
+      const testItem = {
+        name: 'TEST_ITEM_DELETE_ME',
+        notes: 'RLS test',
+        completed: false,
+        created_at: new Date().toISOString()
+      };
+
+      const { data: insertData, error: insertError } = await supabase
+        .from('shopping')
+        .insert(testItem)
+        .select()
+        .single();
+
+      if (insertError) {
+        log(`❌ INSERT: ${insertError.message}`, 'error');
+      } else {
+        log(`✅ INSERT: OK (created test item)`, 'success');
+
+        // Test UPDATE
+        const { error: updateError } = await supabase
+          .from('shopping')
+          .update({ notes: 'Updated by RLS test' })
+          .eq('id', insertData.id);
+        log(updateError ? `❌ UPDATE: ${updateError.message}` : `✅ UPDATE: OK`, updateError ? 'error' : 'success');
+
+        // Test DELETE
+        const { error: deleteError } = await supabase
+          .from('shopping')
+          .delete()
+          .eq('id', insertData.id);
+
+        if (deleteError) {
+          log(`❌ DELETE: ${deleteError.message}`, 'error');
+          log(`🔒 DELETE operations are blocked by RLS policies!`, 'error');
+        } else {
+          log(`✅ DELETE: OK`, 'success');
+        }
+      }
+    };
+
+    // Auto-run connection test on load
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        log('Auto-running initial tests...\n');
+        testConnection();
+        setTimeout(testAuth, 500);
+      }, 500);
+    });
+  </script>
+</body>
+</html>
