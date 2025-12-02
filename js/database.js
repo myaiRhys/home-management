@@ -306,17 +306,31 @@ class DatabaseManager {
 
     try {
       const result = await this.executeWithTimeout(async () => {
-        // Use RPC function to get members with user emails
-        // This function can access auth.users table server-side
+        // Get household members with profiles
         const { data: members, error: membersError } = await supabase
-          .rpc('get_household_members_with_users', {
-            household_id_param: household.id
-          });
+          .from(Tables.HOUSEHOLD_MEMBERS)
+          .select(`
+            id,
+            household_id,
+            user_id,
+            role,
+            created_at,
+            profiles!household_members_user_id_fkey (
+              display_name
+            )
+          `)
+          .eq('household_id', household.id)
+          .order('created_at', { ascending: true });
 
-        if (membersError) throw membersError;
+        if (membersError) {
+          console.error('[DB] Error loading members:', membersError);
+          throw membersError;
+        }
 
-        // Map to the structure expected by the UI
-        const membersWithUsers = members.map(member => ({
+        const currentUserId = authManager.getCurrentUser()?.id;
+
+        // Map to expected structure with display names
+        const membersWithUsers = members.map((member, index) => ({
           id: member.id,
           household_id: member.household_id,
           user_id: member.user_id,
@@ -324,7 +338,8 @@ class DatabaseManager {
           created_at: member.created_at,
           users: {
             id: member.user_id,
-            email: member.user_email || member.user_id // Fallback to user_id if email not found
+            email: member.profiles?.display_name ||
+                   (member.user_id === currentUserId ? 'You' : `Member ${index + 1}`)
           }
         }));
 
@@ -339,6 +354,38 @@ class DatabaseManager {
 
     } catch (error) {
       console.error('[DB] Load household members error:', error);
+      return { data: null, error };
+    }
+  }
+
+  /**
+   * Update user profile display name
+   */
+  async updateDisplayName(displayName) {
+    const user = authManager.getCurrentUser();
+    if (!user) {
+      return { error: { message: 'Not authenticated' } };
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          display_name: displayName,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'id'
+        });
+
+      if (error) throw error;
+
+      // Reload household members to show updated name
+      await this.loadHouseholdMembers();
+
+      return { data, error: null };
+    } catch (error) {
+      console.error('[DB] Update display name error:', error);
       return { data: null, error };
     }
   }

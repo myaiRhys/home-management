@@ -64,7 +64,10 @@ const translations = {
     noMembers: 'No members yet',
     removeMember: 'Remove member',
     confirmRemoveMember: 'Are you sure you want to remove {email} from the household?',
-    memberRemoved: 'Member removed successfully'
+    memberRemoved: 'Member removed successfully',
+    displayName: 'Display Name',
+    updateDisplayName: 'Update Name',
+    displayNameUpdated: 'Display name updated!'
   },
   af: {
     appName: 'Thibault',
@@ -124,7 +127,10 @@ const translations = {
     noMembers: 'Nog geen lede nie',
     removeMember: 'Verwyder lid',
     confirmRemoveMember: 'Is jy seker jy wil {email} uit die huishouding verwyder?',
-    memberRemoved: 'Lid suksesvol verwyder'
+    memberRemoved: 'Lid suksesvol verwyder',
+    displayName: 'Vertoonnaam',
+    updateDisplayName: 'Opdateer Naam',
+    displayNameUpdated: 'Vertoonnaam opgedateer!'
   }
 };
 
@@ -756,10 +762,27 @@ class UIManager {
     const household = authManager.getCurrentHousehold();
     const theme = store.getTheme();
     const language = store.getLanguage();
+    const currentUser = authManager.getCurrentUser();
 
     return `
       <div class="view-container">
         <h1>${this.t('settings')}</h1>
+
+        <div class="settings-section">
+          <h3>${this.t('displayName')}</h3>
+          <div class="setting-item">
+            <input
+              type="text"
+              id="display-name-input"
+              placeholder="${this.t('displayName')}"
+              value=""
+              style="flex: 1; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary);"
+            />
+            <button class="btn btn-primary" data-action="update-display-name" style="margin-left: 0.5rem;">
+              ${this.t('updateDisplayName')}
+            </button>
+          </div>
+        </div>
 
         <div class="settings-section">
           <div class="setting-item">
@@ -993,6 +1016,10 @@ class UIManager {
 
       case 'close-modal':
         this.closeModal();
+        break;
+
+      case 'update-display-name':
+        await this.updateDisplayName();
         break;
     }
   }
@@ -1467,6 +1494,32 @@ class UIManager {
       const members = store.getHouseholdMembers().filter(m => String(m.id) !== String(memberId));
       store.setHouseholdMembers(members);
       this.showToast(this.t('memberRemoved'), 'success');
+    }
+  }
+
+  /**
+   * Update display name
+   */
+  async updateDisplayName() {
+    const input = document.getElementById('display-name-input');
+    const displayName = input?.value?.trim();
+
+    if (!displayName) {
+      this.showToast('Please enter a display name', 'error');
+      return;
+    }
+
+    store.setLoading(true);
+    const { error } = await db.updateDisplayName(displayName);
+    store.setLoading(false);
+
+    if (error) {
+      console.error('Update display name error:', error);
+      this.showToast(error.message || 'Failed to update display name', 'error');
+    } else {
+      this.showToast(this.t('displayNameUpdated'), 'success');
+      // Clear input
+      if (input) input.value = '';
     }
   }
 
