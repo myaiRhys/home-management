@@ -306,24 +306,25 @@ class DatabaseManager {
 
     try {
       const result = await this.executeWithTimeout(async () => {
-        // First get household members
+        // Use RPC function to get members with user emails
+        // This function can access auth.users table server-side
         const { data: members, error: membersError } = await supabase
-          .from(Tables.HOUSEHOLD_MEMBERS)
-          .select('id, household_id, user_id, role, created_at')
-          .eq('household_id', household.id)
-          .order('created_at', { ascending: true });
+          .rpc('get_household_members_with_users', {
+            household_id_param: household.id
+          });
 
         if (membersError) throw membersError;
 
-        // Then get user details for each member
-        // Note: We can't join directly because auth.users is a system table
-        // So we'll use the current user's email from the session for now
-        // and show user IDs for other members
+        // Map to the structure expected by the UI
         const membersWithUsers = members.map(member => ({
-          ...member,
+          id: member.id,
+          household_id: member.household_id,
+          user_id: member.user_id,
+          role: member.role,
+          created_at: member.created_at,
           users: {
             id: member.user_id,
-            email: member.user_id // Will show user ID as email for now
+            email: member.user_email || member.user_id // Fallback to user_id if email not found
           }
         }));
 
