@@ -700,6 +700,7 @@ class UIManager {
   renderTaskItem(item, compact = false, type = 'tasks') {
     const isPending = queueManager.hasPendingOperations(type, item.id);
     const dueStatus = this.getDueStatus(item.due_date);
+    const assigneeName = this.getMemberName(item.assignee);
 
     return `
       <div class="list-item ${item.completed ? 'completed' : ''} ${isPending ? 'pending' : ''}" data-id="${item.id}">
@@ -715,7 +716,7 @@ class UIManager {
           <div class="item-name">${this.escapeHtml(item.name)}</div>
           ${item.notes && !compact ? `<div class="item-notes">${this.escapeHtml(item.notes)}</div>` : ''}
           <div class="item-meta">
-            ${item.assignee ? `<span class="badge">${this.escapeHtml(item.assignee)}</span>` : ''}
+            ${assigneeName ? `<span class="badge">${this.escapeHtml(assigneeName)}</span>` : ''}
             ${item.due_date ? `<span class="badge badge-${dueStatus.class}">${dueStatus.text}</span>` : ''}
           </div>
         </div>
@@ -1106,6 +1107,16 @@ class UIManager {
       list.style.display = 'none';
       icon.textContent = '▶';
     }
+  }
+
+  /**
+   * Get member name from user ID
+   */
+  getMemberName(userId) {
+    if (!userId) return null;
+    const members = store.getHouseholdMembers();
+    const member = members.find(m => m.user_id === userId);
+    return member?.users?.email || null;
   }
 
   /**
