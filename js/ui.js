@@ -920,9 +920,11 @@ class UIManager {
    * Setup event listeners (event delegation)
    */
   setupEventListeners() {
+    console.log('[UI] Setting up event listeners...');
     document.addEventListener('click', (e) => this.handleClick(e));
     document.addEventListener('submit', (e) => this.handleSubmit(e));
     document.addEventListener('change', (e) => this.handleChange(e));
+    console.log('[UI] Event listeners attached');
   }
 
   /**
@@ -998,6 +1000,7 @@ class UIManager {
    * Handle form submissions
    */
   async handleSubmit(e) {
+    console.log('[handleSubmit] Form submitted:', e.target.id);
     e.preventDefault();
     const form = e.target;
 
@@ -1010,7 +1013,10 @@ class UIManager {
     } else if (form.id === 'add-item-form') {
       await this.submitAddForm(form);
     } else if (form.id === 'edit-item-form') {
+      console.log('[handleSubmit] Calling submitEditForm');
       await this.submitEditForm(form);
+    } else {
+      console.warn('[handleSubmit] Unknown form ID:', form.id);
     }
   }
 
@@ -1319,13 +1325,23 @@ class UIManager {
     // If add-form-container exists, use it, otherwise append to container
     const formContainer = document.getElementById('add-form-container');
     if (formContainer) {
+      console.log('[showEditForm] Inserting into add-form-container');
       formContainer.innerHTML = modalHtml;
     } else {
       // Create temporary container
+      console.log('[showEditForm] Creating temp container');
       const tempDiv = document.createElement('div');
       tempDiv.id = 'edit-form-temp';
       tempDiv.innerHTML = modalHtml;
       container.appendChild(tempDiv);
+    }
+
+    // Verify form was created
+    const editForm = document.getElementById('edit-item-form');
+    console.log('[showEditForm] Form created:', editForm ? 'YES' : 'NO');
+    if (editForm) {
+      console.log('[showEditForm] Form ID:', editForm.id);
+      console.log('[showEditForm] Form has submit button:', editForm.querySelector('[type="submit"]') ? 'YES' : 'NO');
     }
 
     // Add close handler
