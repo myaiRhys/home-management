@@ -1006,19 +1006,44 @@ class UIManager {
 
     console.log('[handleSubmit] Form submitted, ID:', formId);
 
-    if (formId === 'auth-form') {
-      await this.signIn();
-    } else if (formId === 'create-household-form') {
-      await this.createHousehold();
-    } else if (formId === 'join-household-form') {
-      await this.joinHousehold();
-    } else if (formId === 'add-item-form') {
-      await this.submitAddForm(form);
-    } else if (formId === 'edit-item-form') {
-      console.log('[handleSubmit] Calling submitEditForm');
-      await this.submitEditForm(form);
-    } else {
-      console.warn('[handleSubmit] Unknown form ID:', formId);
+    // Prevent duplicate submissions
+    if (form.dataset.submitting === 'true') {
+      console.log('[handleSubmit] Form already submitting, ignoring duplicate');
+      return;
+    }
+
+    // Mark as submitting
+    form.dataset.submitting = 'true';
+
+    // Disable submit button
+    const submitButton = form.querySelector('[type="submit"]');
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.textContent = 'Saving...';
+    }
+
+    try {
+      if (formId === 'auth-form') {
+        await this.signIn();
+      } else if (formId === 'create-household-form') {
+        await this.createHousehold();
+      } else if (formId === 'join-household-form') {
+        await this.joinHousehold();
+      } else if (formId === 'add-item-form') {
+        await this.submitAddForm(form);
+      } else if (formId === 'edit-item-form') {
+        console.log('[handleSubmit] Calling submitEditForm');
+        await this.submitEditForm(form);
+      } else {
+        console.warn('[handleSubmit] Unknown form ID:', formId);
+      }
+    } finally {
+      // Reset submitting state
+      form.dataset.submitting = 'false';
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.textContent = this.t('save');
+      }
     }
   }
 
