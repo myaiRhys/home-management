@@ -67,7 +67,10 @@ const translations = {
     memberRemoved: 'Member removed successfully',
     displayName: 'Display Name',
     updateDisplayName: 'Update Name',
-    displayNameUpdated: 'Display name updated!'
+    displayNameUpdated: 'Display name updated!',
+    clearCompleted: 'Clear All',
+    confirmClearCompleted: 'Delete all completed items? This cannot be undone.',
+    clearedCompleted: 'Completed items cleared!'
   },
   af: {
     appName: 'Thibault',
@@ -130,7 +133,10 @@ const translations = {
     memberRemoved: 'Lid suksesvol verwyder',
     displayName: 'Vertoonnaam',
     updateDisplayName: 'Opdateer Naam',
-    displayNameUpdated: 'Vertoonnaam opgedateer!'
+    displayNameUpdated: 'Vertoonnaam opgedateer!',
+    clearCompleted: 'Maak Alles Skoon',
+    confirmClearCompleted: 'Verwyder alle voltooide items? Dit kan nie ongedaan gemaak word nie.',
+    clearedCompleted: 'Voltooide items verwyder!'
   }
 };
 
@@ -536,7 +542,19 @@ class UIManager {
         <div class="list-section collapsed">
           <div class="list-section-header" data-action="toggle-section" data-section="purchased">
             <h2>${this.t('purchased')} (${purchased.length})</h2>
-            <span class="collapse-icon">▼</span>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              ${purchased.length > 0 ? `
+                <button
+                  class="btn btn-secondary btn-sm"
+                  data-action="clear-completed"
+                  data-type="shopping"
+                  style="font-size: 0.75rem; padding: 0.25rem 0.5rem;"
+                >
+                  ${this.t('clearCompleted')}
+                </button>
+              ` : ''}
+              <span class="collapse-icon">▼</span>
+            </div>
           </div>
           <div class="list" id="purchased-list" style="display: none;">
             ${purchased.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : purchased.map(item => this.renderShoppingItem(item)).join('')}
@@ -623,7 +641,19 @@ class UIManager {
         <div class="list-section collapsed">
           <div class="list-section-header" data-action="toggle-section" data-section="completed-tasks">
             <h2>${this.t('completed')} (${completed.length})</h2>
-            <span class="collapse-icon">▼</span>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              ${completed.length > 0 ? `
+                <button
+                  class="btn btn-secondary btn-sm"
+                  data-action="clear-completed"
+                  data-type="tasks"
+                  style="font-size: 0.75rem; padding: 0.25rem 0.5rem;"
+                >
+                  ${this.t('clearCompleted')}
+                </button>
+              ` : ''}
+              <span class="collapse-icon">▼</span>
+            </div>
           </div>
           <div class="list" id="completed-tasks-list" style="display: none;">
             ${completed.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : completed.map(item => this.renderTaskItem(item, false, 'tasks')).join('')}
@@ -682,7 +712,19 @@ class UIManager {
         <div class="list-section collapsed">
           <div class="list-section-header" data-action="toggle-section" data-section="completed-clifford">
             <h2>${this.t('completed')} (${completed.length})</h2>
-            <span class="collapse-icon">▼</span>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              ${completed.length > 0 ? `
+                <button
+                  class="btn btn-secondary btn-sm"
+                  data-action="clear-completed"
+                  data-type="clifford"
+                  style="font-size: 0.75rem; padding: 0.25rem 0.5rem;"
+                >
+                  ${this.t('clearCompleted')}
+                </button>
+              ` : ''}
+              <span class="collapse-icon">▼</span>
+            </div>
           </div>
           <div class="list" id="completed-clifford-list" style="display: none;">
             ${completed.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : completed.map(item => this.renderTaskItem(item, false, 'clifford')).join('')}
@@ -1021,6 +1063,10 @@ class UIManager {
 
       case 'update-display-name':
         await this.updateDisplayName();
+        break;
+
+      case 'clear-completed':
+        await this.clearCompleted(target.dataset.type);
         break;
     }
   }
@@ -1543,6 +1589,49 @@ class UIManager {
       this.showToast(this.t('displayNameUpdated'), 'success');
       // Clear input
       if (input) input.value = '';
+    }
+  }
+
+  /**
+   * Clear all completed items
+   */
+  async clearCompleted(type) {
+    if (!confirm(this.t('confirmClearCompleted'))) {
+      return;
+    }
+
+    let items = [];
+    if (type === 'shopping') {
+      items = store.getShopping().filter(item => item.completed);
+    } else if (type === 'tasks') {
+      items = store.getTasks().filter(item => item.completed);
+    } else if (type === 'clifford') {
+      items = store.getClifford().filter(item => item.completed);
+    }
+
+    if (items.length === 0) return;
+
+    store.setLoading(true);
+
+    // Delete all completed items
+    const deletePromises = items.map(item => {
+      if (type === 'shopping') {
+        return db.deleteShoppingItem(item.id);
+      } else if (type === 'tasks') {
+        return db.deleteTask(item.id);
+      } else if (type === 'clifford') {
+        return db.deleteClifford(item.id);
+      }
+    });
+
+    try {
+      await Promise.all(deletePromises);
+      this.showToast(this.t('clearedCompleted'), 'success');
+    } catch (error) {
+      console.error('Error clearing completed items:', error);
+      this.showToast('Failed to clear completed items', 'error');
+    } finally {
+      store.setLoading(false);
     }
   }
 
