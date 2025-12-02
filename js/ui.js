@@ -1128,13 +1128,24 @@ class UIManager {
       </div>
     `;
 
-    // Add close handler
+    // Add close handler with event capturing
     const closeButton = container.querySelector('[data-action="close-modal"]');
     console.log('[showAddForm] Close button found:', closeButton ? 'YES' : 'NO');
     if (closeButton) {
-      closeButton.addEventListener('click', () => {
-        console.log('[showAddForm] Close button clicked, clearing container');
+      console.log('[showAddForm] Close button element:', closeButton);
+      console.log('[showAddForm] Close button parent:', closeButton.parentElement);
+
+      // Use capture phase to catch the event early
+      closeButton.addEventListener('click', (e) => {
+        console.log('[showAddForm] Close button CLICKED!', e);
+        e.stopPropagation(); // Prevent bubbling
+        console.log('[showAddForm] Clearing container');
         container.innerHTML = '';
+      }, true); // Use capture phase
+
+      // Also try without capture
+      closeButton.addEventListener('click', (e) => {
+        console.log('[showAddForm] Close button clicked (bubble phase)');
       });
     }
 
@@ -1142,8 +1153,9 @@ class UIManager {
     const overlay = container.querySelector('.modal-overlay');
     if (overlay) {
       overlay.addEventListener('click', (e) => {
+        console.log('[showAddForm] Overlay clicked, target:', e.target.className);
         if (e.target === overlay) {
-          console.log('[showAddForm] Overlay clicked, clearing container');
+          console.log('[showAddForm] Overlay clicked directly, clearing container');
           container.innerHTML = '';
         }
       });
