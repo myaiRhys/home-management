@@ -434,6 +434,8 @@ class UIManager {
         </div>
 
         ${this.renderUpcoming()}
+
+        <div id="add-form-container"></div>
       </div>
     `;
   }
@@ -811,6 +813,8 @@ class UIManager {
         <div class="settings-section">
           <button class="btn btn-danger" data-action="sign-out">${this.t('signOut')}</button>
         </div>
+
+        <div id="add-form-container"></div>
       </div>
     `;
   }
