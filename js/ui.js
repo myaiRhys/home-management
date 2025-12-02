@@ -355,6 +355,9 @@ class UIManager {
       <div class="app-container">
         <div class="connection-indicator" id="connection-indicator"></div>
         <div class="app-content" id="app-content">
+          <div class="pull-to-refresh-indicator" id="pull-indicator">
+            <div class="spinner"></div>
+          </div>
           ${this.renderView(view)}
         </div>
         <nav class="bottom-nav">
@@ -377,8 +380,6 @@ class UIManager {
         return this.renderTasks();
       case 'clifford':
         return this.renderClifford();
-      case 'personal':
-        return this.renderPersonal();
       case 'settings':
         return this.renderSettings();
       default:
@@ -396,7 +397,6 @@ class UIManager {
       { id: 'shopping', label: this.t('shopping'), icon: '🛒' },
       { id: 'tasks', label: this.t('tasks'), icon: '✓' },
       { id: 'clifford', label: this.t('clifford'), icon: '👶' },
-      { id: 'personal', label: this.t('personal'), icon: '📝' },
       { id: 'settings', label: this.t('settings'), icon: '⚙️' }
     ];
 
@@ -419,6 +419,7 @@ class UIManager {
     const shopping = store.getShopping().filter(item => !item.completed);
     const tasks = store.getTasks().filter(task => !task.completed);
     const clifford = store.getClifford().filter(item => !item.completed);
+    const personal = store.getPersonalTasks().filter(item => !item.completed);
 
     return `
       <div class="view-container">
@@ -446,6 +447,14 @@ class UIManager {
             <div class="card-content">
               <h3>${this.t('clifford')}</h3>
               <p class="card-count">${clifford.length} ${this.t('active').toLowerCase()}</p>
+            </div>
+          </div>
+
+          <div class="dashboard-card" data-action="navigate-personal">
+            <div class="card-icon">📝</div>
+            <div class="card-content">
+              <h3>${this.t('personal')}</h3>
+              <p class="card-count">${personal.length} ${this.t('active').toLowerCase()}</p>
             </div>
           </div>
         </div>
@@ -505,15 +514,19 @@ class UIManager {
    */
   renderShopping() {
     const items = store.getShopping();
-    const toBuy = items.filter(item => !item.completed);
-    const purchased = items.filter(item => item.completed);
+    const sortBy = store.getSortPreference('shopping');
+    const toBuy = this.sortItems(items.filter(item => !item.completed), sortBy);
+    const purchased = this.sortItems(items.filter(item => item.completed), sortBy);
     const quickAdd = store.getQuickAdd('shopping');
 
     return `
       <div class="view-container">
         <div class="view-header">
           <h1>${this.t('shopping')}</h1>
-          <button class="btn btn-icon" data-action="show-add-form" data-type="shopping">+</button>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            ${this.renderSortDropdown('shopping')}
+            <button class="btn btn-icon" data-action="show-add-form" data-type="shopping">+</button>
+          </div>
         </div>
 
         ${quickAdd.length > 0 ? `
@@ -576,6 +589,8 @@ class UIManager {
    */
   renderShoppingItem(item) {
     const isPending = queueManager.hasPendingOperations('shopping', item.id);
+    const quantity = item.quantity || 1;
+    const quantityPrefix = quantity > 1 ? `${quantity}× ` : '';
 
     return `
       <div class="list-item ${item.completed ? 'completed' : ''} ${isPending ? 'pending' : ''}" data-id="${item.id}">
@@ -587,7 +602,7 @@ class UIManager {
           data-id="${item.id}"
         />
         <div class="item-content">
-          <div class="item-name">${this.escapeHtml(item.name)}</div>
+          <div class="item-name">${quantityPrefix}${this.escapeHtml(item.name)}</div>
           ${item.notes ? `<div class="item-notes">${this.escapeHtml(item.notes)}</div>` : ''}
         </div>
         <div class="item-actions">
@@ -600,19 +615,45 @@ class UIManager {
   }
 
   /**
-   * Render tasks list
+   * Render tasks list with drawer for household/personal
    */
   renderTasks() {
-    const items = store.getTasks();
-    const active = items.filter(item => !item.completed);
-    const completed = items.filter(item => item.completed);
-    const quickAdd = store.getQuickAdd('tasks');
+    const drawer = store.getTasksDrawer();
+    const isPersonal = drawer === 'personal';
+
+    // Get items based on drawer
+    const items = isPersonal ? store.getPersonalTasks() : store.getTasks();
+    const type = isPersonal ? 'personal' : 'tasks';
+    const sortBy = store.getSortPreference(type);
+    const active = this.sortItems(items.filter(item => !item.completed), sortBy);
+    const completed = this.sortItems(items.filter(item => item.completed), sortBy);
+    const quickAdd = isPersonal ? [] : store.getQuickAdd('tasks');
 
     return `
       <div class="view-container">
         <div class="view-header">
           <h1>${this.t('tasks')}</h1>
-          <button class="btn btn-icon" data-action="show-add-form" data-type="tasks">+</button>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            ${this.renderSortDropdown(type)}
+            <button class="btn btn-icon" data-action="show-add-form" data-type="${type}">+</button>
+          </div>
+        </div>
+
+        <div class="tasks-drawer">
+          <button
+            class="drawer-btn ${drawer === 'household' ? 'active' : ''}"
+            data-action="switch-tasks-drawer"
+            data-drawer="household"
+          >
+            Household Tasks
+          </button>
+          <button
+            class="drawer-btn ${drawer === 'personal' ? 'active' : ''}"
+            data-action="switch-tasks-drawer"
+            data-drawer="personal"
+          >
+            Personal Tasks
+          </button>
         </div>
 
         ${quickAdd.length > 0 ? `
@@ -634,24 +675,24 @@ class UIManager {
         ` : ''}
 
         <div class="list-section">
-          <div class="list-section-header" data-action="toggle-section" data-section="active-tasks">
+          <div class="list-section-header" data-action="toggle-section" data-section="active-${type}">
             <h2>${this.t('active')} (${active.length})</h2>
             <span class="collapse-icon">▼</span>
           </div>
-          <div class="list" id="active-tasks-list">
-            ${active.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : active.map(item => this.renderTaskItem(item, false, 'tasks')).join('')}
+          <div class="list" id="active-${type}-list">
+            ${active.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : active.map(item => this.renderTaskItem(item, false, type)).join('')}
           </div>
         </div>
 
         <div class="list-section collapsed">
-          <div class="list-section-header" data-action="toggle-section" data-section="completed-tasks">
+          <div class="list-section-header" data-action="toggle-section" data-section="completed-${type}">
             <h2>${this.t('completed')} (${completed.length})</h2>
             <div style="display: flex; align-items: center; gap: 0.5rem;">
               ${completed.length > 0 ? `
                 <button
                   class="btn btn-secondary btn-sm"
                   data-action="clear-completed"
-                  data-type="tasks"
+                  data-type="${type}"
                   style="font-size: 0.75rem; padding: 0.25rem 0.5rem;"
                 >
                   ${this.t('clearCompleted')}
@@ -660,8 +701,8 @@ class UIManager {
               <span class="collapse-icon">▼</span>
             </div>
           </div>
-          <div class="list" id="completed-tasks-list" style="display: none;">
-            ${completed.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : completed.map(item => this.renderTaskItem(item, false, 'tasks')).join('')}
+          <div class="list" id="completed-${type}-list" style="display: none;">
+            ${completed.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : completed.map(item => this.renderTaskItem(item, false, type)).join('')}
           </div>
         </div>
 
@@ -675,15 +716,19 @@ class UIManager {
    */
   renderClifford() {
     const items = store.getClifford();
-    const active = items.filter(item => !item.completed);
-    const completed = items.filter(item => item.completed);
+    const sortBy = store.getSortPreference('clifford');
+    const active = this.sortItems(items.filter(item => !item.completed), sortBy);
+    const completed = this.sortItems(items.filter(item => item.completed), sortBy);
     const quickAdd = store.getQuickAdd('clifford');
 
     return `
       <div class="view-container">
         <div class="view-header">
           <h1>${this.t('clifford')}</h1>
-          <button class="btn btn-icon" data-action="show-add-form" data-type="clifford">+</button>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            ${this.renderSortDropdown('clifford')}
+            <button class="btn btn-icon" data-action="show-add-form" data-type="clifford">+</button>
+          </div>
         </div>
 
         ${quickAdd.length > 0 ? `
@@ -1066,6 +1111,12 @@ class UIManager {
         store.setCurrentView(target.dataset.view);
         break;
 
+      case 'navigate-personal':
+        e.preventDefault();
+        store.setTasksDrawer('personal');
+        store.setCurrentView('tasks');
+        break;
+
       case 'toggle-section':
         this.toggleSection(target);
         break;
@@ -1124,6 +1175,10 @@ class UIManager {
 
       case 'clear-completed':
         await this.clearCompleted(target.dataset.type);
+        break;
+
+      case 'switch-tasks-drawer':
+        store.setTasksDrawer(target.dataset.drawer);
         break;
     }
   }
@@ -1190,6 +1245,10 @@ class UIManager {
       store.setTheme(target.value);
     } else if (action === 'change-language') {
       store.setLanguage(target.value);
+    } else if (action === 'change-sort') {
+      const view = target.dataset.view;
+      const sortValue = target.value;
+      store.setSortPreference(view, sortValue);
     }
   }
 
@@ -1220,6 +1279,56 @@ class UIManager {
     const members = store.getHouseholdMembers();
     const member = members.find(m => m.user_id === userId);
     return member?.users?.email || null;
+  }
+
+  /**
+   * Sort items based on sort preference
+   */
+  sortItems(items, sortBy) {
+    const sorted = [...items];
+
+    switch (sortBy) {
+      case 'recent':
+        return sorted.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      case 'oldest':
+        return sorted.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      case 'a-z':
+        return sorted.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+      case 'z-a':
+        return sorted.sort((a, b) => b.name.toLowerCase().localeCompare(a.name.toLowerCase()));
+      case 'due_date':
+        return sorted.sort((a, b) => {
+          if (!a.due_date && !b.due_date) return 0;
+          if (!a.due_date) return 1;
+          if (!b.due_date) return -1;
+          return new Date(a.due_date) - new Date(b.due_date);
+        });
+      default:
+        return sorted;
+    }
+  }
+
+  /**
+   * Render sort dropdown
+   */
+  renderSortDropdown(view) {
+    const currentSort = store.getSortPreference(view);
+    const hasDueDate = view === 'tasks' || view === 'clifford' || view === 'personal';
+
+    return `
+      <select
+        class="sort-dropdown"
+        data-action="change-sort"
+        data-view="${view}"
+        style="padding: 0.5rem; border: 1px solid var(--border); border-radius: var(--radius); background-color: var(--card); color: var(--text); font-size: 0.9rem; max-width: 120px;"
+      >
+        <option value="recent" ${currentSort === 'recent' ? 'selected' : ''}>Recent</option>
+        <option value="oldest" ${currentSort === 'oldest' ? 'selected' : ''}>Oldest</option>
+        <option value="a-z" ${currentSort === 'a-z' ? 'selected' : ''}>A-Z</option>
+        <option value="z-a" ${currentSort === 'z-a' ? 'selected' : ''}>Z-A</option>
+        ${hasDueDate ? `<option value="due_date" ${currentSort === 'due_date' ? 'selected' : ''}>Due Date</option>` : ''}
+      </select>
+    `;
   }
 
   /**
@@ -1263,6 +1372,16 @@ class UIManager {
               required
               autofocus
             />
+            ${isShopping ? `
+              <input
+                type="number"
+                name="quantity"
+                placeholder="Qty"
+                min="1"
+                value="1"
+                style="width: 80px; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary); margin-bottom: 0.5rem;"
+              />
+            ` : ''}
             ${needsTaskFields ? `
               ${!isPersonal ? `
                 <select name="assignee" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary); margin-bottom: 0.5rem;">
@@ -1315,7 +1434,8 @@ class UIManager {
     const notes = formData.get('notes') || '';
 
     if (type === 'shopping') {
-      await db.addShoppingItem(name, notes);
+      const quantity = parseInt(formData.get('quantity')) || 1;
+      await db.addShoppingItem(name, notes, quantity);
     } else if (type === 'personal') {
       const dueDate = formData.get('due_date') || null;
       await db.addPersonalTask(name, dueDate, notes);
@@ -1349,6 +1469,12 @@ class UIManager {
     console.log('[submitEditForm] Form data:', { type, id, name, notes });
 
     const updates = { name, notes };
+
+    // Add shopping-specific fields
+    if (type === 'shopping') {
+      const quantity = parseInt(formData.get('quantity')) || 1;
+      updates.quantity = quantity;
+    }
 
     // Add task-specific fields
     if (type !== 'shopping') {
@@ -1516,6 +1642,16 @@ class UIManager {
               required
               autofocus
             />
+            ${isShopping ? `
+              <input
+                type="number"
+                name="quantity"
+                placeholder="Qty"
+                min="1"
+                value="${item.quantity || 1}"
+                style="width: 80px; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary); margin-bottom: 0.5rem;"
+              />
+            ` : ''}
             ${needsTaskFields ? `
               ${!isPersonal ? `
                 <select name="assignee" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary); margin-bottom: 0.5rem;">

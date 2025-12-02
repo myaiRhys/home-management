@@ -25,10 +25,17 @@ class Store {
 
       // UI State
       currentView: 'dashboard', // dashboard, shopping, tasks, clifford, settings
+      tasksDrawer: 'household', // 'household' or 'personal'
       theme: 'dark',
       language: 'en',
       loading: false,
       connectionState: 'offline',
+      sortPreferences: {
+        shopping: 'recent',
+        tasks: 'recent',
+        clifford: 'recent',
+        personal: 'recent'
+      },
 
       // Modals & Forms
       showModal: null, // null, 'quick-add-shopping', 'quick-add-tasks', etc.
@@ -144,6 +151,12 @@ class Store {
         this.state.household = JSON.parse(household);
       }
 
+      // Sort preferences
+      const sortPreferences = localStorage.getItem('thibault_sort_preferences');
+      if (sortPreferences) {
+        this.state.sortPreferences = JSON.parse(sortPreferences);
+      }
+
     } catch (error) {
       console.error('Error loading persisted state:', error);
     }
@@ -164,6 +177,9 @@ class Store {
       if (this.state.household) {
         localStorage.setItem(STORAGE_KEYS.HOUSEHOLD, JSON.stringify(this.state.household));
       }
+
+      // Persist sort preferences
+      localStorage.setItem('thibault_sort_preferences', JSON.stringify(this.state.sortPreferences));
     } catch (error) {
       console.error('Error persisting state:', error);
     }
@@ -301,6 +317,27 @@ class Store {
 
   setEditingItem(editingItem) {
     this.setState({ editingItem });
+  }
+
+  getTasksDrawer() {
+    return this.state.tasksDrawer;
+  }
+
+  setTasksDrawer(tasksDrawer) {
+    this.setState({ tasksDrawer });
+  }
+
+  getSortPreference(view) {
+    return this.state.sortPreferences[view] || 'recent';
+  }
+
+  setSortPreference(view, sort) {
+    this.setState({
+      sortPreferences: {
+        ...this.state.sortPreferences,
+        [view]: sort
+      }
+    });
   }
 }
 

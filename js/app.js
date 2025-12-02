@@ -13,6 +13,12 @@ import { ui } from './ui.js';
 class App {
   constructor() {
     this.initialized = false;
+    this.pullToRefresh = {
+      startY: 0,
+      currentY: 0,
+      isDragging: false,
+      threshold: 80
+    };
   }
 
   /**
@@ -61,6 +67,9 @@ class App {
 
       // Register service worker
       this.registerServiceWorker();
+
+      // Setup pull-to-refresh
+      this.setupPullToRefresh();
 
       this.initialized = true;
       console.log('[App] Initialized successfully');
@@ -114,6 +123,76 @@ class App {
       await this.loadData(household.id);
       ui.showToast('Data refreshed', 'success');
     }
+  }
+
+  /**
+   * Setup pull-to-refresh functionality
+   */
+  setupPullToRefresh() {
+    console.log('[App] Setting up pull-to-refresh...');
+
+    const appContent = document.getElementById('app-content');
+    const indicator = document.getElementById('pull-indicator');
+
+    if (!appContent || !indicator) {
+      console.log('[App] Pull-to-refresh elements not found, retrying in 100ms');
+      setTimeout(() => this.setupPullToRefresh(), 100);
+      return;
+    }
+
+    // Touch start
+    appContent.addEventListener('touchstart', (e) => {
+      // Only trigger if scrolled to top
+      if (appContent.scrollTop === 0) {
+        this.pullToRefresh.startY = e.touches[0].clientY;
+        this.pullToRefresh.isDragging = true;
+      }
+    });
+
+    // Touch move
+    appContent.addEventListener('touchmove', (e) => {
+      if (!this.pullToRefresh.isDragging) return;
+
+      this.pullToRefresh.currentY = e.touches[0].clientY;
+      const pullDistance = this.pullToRefresh.currentY - this.pullToRefresh.startY;
+
+      // Show indicator when pulling down
+      if (pullDistance > 0 && appContent.scrollTop === 0) {
+        indicator.classList.add('visible');
+      } else {
+        indicator.classList.remove('visible');
+      }
+    });
+
+    // Touch end
+    appContent.addEventListener('touchend', async (e) => {
+      if (!this.pullToRefresh.isDragging) return;
+
+      const pullDistance = this.pullToRefresh.currentY - this.pullToRefresh.startY;
+
+      // Trigger refresh if pulled beyond threshold
+      if (pullDistance > this.pullToRefresh.threshold && appContent.scrollTop === 0) {
+        console.log('[App] Pull-to-refresh triggered');
+
+        // Vibrate if supported
+        if (navigator.vibrate) {
+          navigator.vibrate(50);
+        }
+
+        // Refresh data
+        await authManager.refreshSession();
+        await queueManager.processQueue();
+        await this.reload();
+      }
+
+      // Reset
+      this.pullToRefresh.isDragging = false;
+      this.pullToRefresh.startY = 0;
+      this.pullToRefresh.currentY = 0;
+      indicator.classList.remove('visible');
+    });
+
+    console.log('[App] Pull-to-refresh setup complete');
   }
 }
 

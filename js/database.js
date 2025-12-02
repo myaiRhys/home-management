@@ -455,7 +455,7 @@ class DatabaseManager {
   // SHOPPING OPERATIONS
   // ============================
 
-  async addShoppingItem(name, notes = '') {
+  async addShoppingItem(name, notes = '', quantity = 1) {
     const household = authManager.getCurrentHousehold();
     if (!household) {
       return { data: null, error: new Error('No household') };
@@ -465,6 +465,7 @@ class DatabaseManager {
       household_id: household.id,
       name,
       notes,
+      quantity: quantity || 1,
       completed: false,
       created_at: new Date().toISOString()
     };

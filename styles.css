@@ -206,6 +206,37 @@ p {
   overflow-x: hidden;
   padding-bottom: 70px; /* Space for bottom nav */
   -webkit-overflow-scrolling: touch;
+  position: relative;
+}
+
+/* ===========================
+   Pull to Refresh
+   =========================== */
+.pull-to-refresh-indicator {
+  position: absolute;
+  top: -60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: top 0.2s ease;
+  z-index: 100;
+}
+
+.pull-to-refresh-indicator.visible {
+  top: 10px;
+}
+
+.pull-to-refresh-indicator .spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
 /* ===========================
@@ -605,6 +636,41 @@ p {
   padding: 0;
   font-size: 1.5rem;
   border-radius: 50%;
+}
+
+/* ===========================
+   Tasks Drawer
+   =========================== */
+.tasks-drawer {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+
+.drawer-btn {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background-color: var(--card);
+  color: var(--text);
+  cursor: pointer;
+  transition: all var(--transition);
+  min-height: 44px;
+}
+
+.drawer-btn.active {
+  background-color: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.drawer-btn:active {
+  transform: scale(0.98);
 }
 
 /* ===========================
