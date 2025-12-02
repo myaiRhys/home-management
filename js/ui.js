@@ -983,6 +983,10 @@ class UIManager {
       case 'sign-up':
         await this.signUp();
         break;
+
+      case 'close-modal':
+        this.closeModal();
+        break;
     }
   }
 
@@ -1323,6 +1327,19 @@ class UIManager {
         if (tempContainer) tempContainer.remove();
       }
     });
+  }
+
+  /**
+   * Close modal
+   */
+  closeModal() {
+    const formContainer = document.getElementById('add-form-container');
+    const tempContainer = document.getElementById('edit-form-temp');
+    const quickAddContainer = document.getElementById('quick-add-modal');
+
+    if (formContainer) formContainer.innerHTML = '';
+    if (tempContainer) tempContainer.remove();
+    if (quickAddContainer) quickAddContainer.remove();
   }
 
   /**
