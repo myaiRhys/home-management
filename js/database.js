@@ -310,36 +310,44 @@ class DatabaseManager {
         let members = null;
         let membersError = null;
 
-        // First attempt: try with profiles join
-        try {
-          const response = await supabase
-            .from(Tables.HOUSEHOLD_MEMBERS)
-            .select(`
-              id,
-              household_id,
-              user_id,
-              role,
-              created_at,
-              profiles (
-                display_name
-              )
-            `)
-            .eq('household_id', household.id)
-            .order('created_at', { ascending: true });
+        // Get household members
+        const response = await supabase
+          .from(Tables.HOUSEHOLD_MEMBERS)
+          .select('id, household_id, user_id, role, created_at')
+          .eq('household_id', household.id)
+          .order('created_at', { ascending: true });
 
-          members = response.data;
-          membersError = response.error;
-        } catch (profilesError) {
-          console.log('[DB] Profiles table not found, fetching without profiles');
-          // Fallback: get members without profiles if table doesn't exist
-          const response = await supabase
-            .from(Tables.HOUSEHOLD_MEMBERS)
-            .select('id, household_id, user_id, role, created_at')
-            .eq('household_id', household.id)
-            .order('created_at', { ascending: true });
+        members = response.data;
+        membersError = response.error;
 
-          members = response.data;
-          membersError = response.error;
+        // If we got members, try to fetch profiles separately
+        if (members && members.length > 0 && !membersError) {
+          try {
+            const userIds = members.map(m => m.user_id);
+            const { data: profiles, error: profilesError } = await supabase
+              .from('profiles')
+              .select('id, display_name')
+              .in('id', userIds);
+
+            if (!profilesError && profiles) {
+              // Map profiles to members
+              const profilesMap = {};
+              profiles.forEach(p => {
+                profilesMap[p.id] = p;
+              });
+
+              members = members.map(member => ({
+                ...member,
+                profiles: profilesMap[member.user_id]
+              }));
+
+              console.log('[DB] Loaded profiles:', profiles);
+            } else if (profilesError) {
+              console.log('[DB] Profiles query error (table may not exist):', profilesError);
+            }
+          } catch (profilesError) {
+            console.log('[DB] Could not load profiles, continuing without them');
+          }
         }
 
         if (membersError) {
