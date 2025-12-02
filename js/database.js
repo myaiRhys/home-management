@@ -700,6 +700,88 @@ class DatabaseManager {
   }
 
   // ============================
+  // PERSONAL TASKS OPERATIONS
+  // ============================
+
+  async loadPersonalTasks() {
+    const user = authManager.getCurrentUser();
+    if (!user) {
+      return { data: [], error: null };
+    }
+
+    const { data, error } = await this.fetch(Tables.PERSONAL_TASKS, {
+      user_id: user.id
+    });
+
+    if (!error && data) {
+      store.setPersonalTasks(data);
+    }
+
+    return { data, error };
+  }
+
+  async addPersonalTask(name, dueDate, notes) {
+    const user = authManager.getCurrentUser();
+    if (!user) {
+      return { data: null, error: new Error('Not authenticated') };
+    }
+
+    const item = {
+      user_id: user.id,
+      name,
+      notes: notes || '',
+      due_date: dueDate || null,
+      completed: false,
+      created_at: new Date().toISOString()
+    };
+
+    const { data, error } = await this.insert(Tables.PERSONAL_TASKS, item);
+
+    if (!error && data) {
+      const current = store.getPersonalTasks();
+      store.setPersonalTasks([...current, data]);
+    }
+
+    return { data, error };
+  }
+
+  async updatePersonalTask(id, updates) {
+    const { data, error} = await this.update(Tables.PERSONAL_TASKS, id, {
+      ...updates,
+      updated_at: new Date().toISOString()
+    });
+
+    if (!error && data) {
+      const current = store.getPersonalTasks();
+      const updated = current.map(item => item.id === id ? { ...item, ...data } : item);
+      store.setPersonalTasks(updated);
+    }
+
+    return { data, error };
+  }
+
+  async togglePersonalTask(id) {
+    const current = store.getPersonalTasks();
+    const item = current.find(t => t.id === id);
+    if (!item) return { data: null, error: new Error('Item not found') };
+
+    return await this.updatePersonalTask(id, {
+      completed: !item.completed
+    });
+  }
+
+  async deletePersonalTask(id) {
+    const { data, error } = await this.delete(Tables.PERSONAL_TASKS, id);
+
+    if (!error) {
+      const current = store.getPersonalTasks().filter(item => item.id !== id);
+      store.setPersonalTasks(current);
+    }
+
+    return { data, error };
+  }
+
+  // ============================
   // QUICK ADD OPERATIONS
   // ============================
 

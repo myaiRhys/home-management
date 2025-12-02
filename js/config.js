@@ -43,5 +43,6 @@ export const Tables = {
   CLIFFORD: 'clifford',
   QUICK_ADD: 'quick_add',
   HOUSEHOLDS: 'households',
-  HOUSEHOLD_MEMBERS: 'household_members'
+  HOUSEHOLD_MEMBERS: 'household_members',
+  PERSONAL_TASKS: 'personal_tasks'
 };

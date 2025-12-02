@@ -83,6 +83,7 @@ class App {
       db.loadShopping(),
       db.loadTasks(),
       db.loadClifford(),
+      db.loadPersonalTasks(),
       db.loadQuickAdd(),
       db.loadHouseholdMembers()
     ]);

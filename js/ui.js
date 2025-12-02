@@ -12,6 +12,7 @@ const translations = {
     shopping: 'Shopping',
     tasks: 'Tasks',
     clifford: 'Clifford',
+    personal: 'Personal',
     settings: 'Settings',
     addItem: 'Add Item',
     addTask: 'Add Task',
@@ -78,6 +79,7 @@ const translations = {
     shopping: 'Inkopies',
     tasks: 'Take',
     clifford: 'Clifford',
+    personal: 'Persoonlik',
     settings: 'Instellings',
     addItem: 'Voeg Item By',
     addTask: 'Voeg Taak By',
@@ -375,6 +377,8 @@ class UIManager {
         return this.renderTasks();
       case 'clifford':
         return this.renderClifford();
+      case 'personal':
+        return this.renderPersonal();
       case 'settings':
         return this.renderSettings();
       default:
@@ -392,6 +396,7 @@ class UIManager {
       { id: 'shopping', label: this.t('shopping'), icon: '🛒' },
       { id: 'tasks', label: this.t('tasks'), icon: '✓' },
       { id: 'clifford', label: this.t('clifford'), icon: '👶' },
+      { id: 'personal', label: this.t('personal'), icon: '📝' },
       { id: 'settings', label: this.t('settings'), icon: '⚙️' }
     ];
 
@@ -728,6 +733,58 @@ class UIManager {
           </div>
           <div class="list" id="completed-clifford-list" style="display: none;">
             ${completed.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : completed.map(item => this.renderTaskItem(item, false, 'clifford')).join('')}
+          </div>
+        </div>
+
+        <div id="add-form-container"></div>
+      </div>
+    `;
+  }
+
+  /**
+   * Render personal tasks list (private to user)
+   */
+  renderPersonal() {
+    const items = store.getPersonalTasks();
+    const active = items.filter(item => !item.completed);
+    const completed = items.filter(item => item.completed);
+
+    return `
+      <div class="view-container">
+        <div class="view-header">
+          <h1>${this.t('personal')}</h1>
+          <button class="btn btn-icon" data-action="show-add-form" data-type="personal">+</button>
+        </div>
+
+        <div class="list-section">
+          <div class="list-section-header" data-action="toggle-section" data-section="active-personal">
+            <h2>${this.t('active')} (${active.length})</h2>
+            <span class="collapse-icon">▼</span>
+          </div>
+          <div class="list" id="active-personal-list">
+            ${active.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : active.map(item => this.renderTaskItem(item, false, 'personal')).join('')}
+          </div>
+        </div>
+
+        <div class="list-section collapsed">
+          <div class="list-section-header" data-action="toggle-section" data-section="completed-personal">
+            <h2>${this.t('completed')} (${completed.length})</h2>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              ${completed.length > 0 ? `
+                <button
+                  class="btn btn-secondary btn-sm"
+                  data-action="clear-completed"
+                  data-type="personal"
+                  style="font-size: 0.75rem; padding: 0.25rem 0.5rem;"
+                >
+                  ${this.t('clearCompleted')}
+                </button>
+              ` : ''}
+              <span class="collapse-icon">▼</span>
+            </div>
+          </div>
+          <div class="list" id="completed-personal-list" style="display: none;">
+            ${completed.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : completed.map(item => this.renderTaskItem(item, false, 'personal')).join('')}
           </div>
         </div>
 
@@ -1190,6 +1247,8 @@ class UIManager {
     if (!container) return;
 
     const isShopping = type === 'shopping';
+    const isPersonal = type === 'personal';
+    const needsTaskFields = !isShopping; // tasks, clifford, and personal all have due date
 
     container.innerHTML = `
       <div class="modal-overlay" data-action="close-modal">
@@ -1204,10 +1263,12 @@ class UIManager {
               required
               autofocus
             />
-            ${!isShopping ? `
-              <select name="assignee" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary); margin-bottom: 0.5rem;">
-                ${this.getMemberOptions()}
-              </select>
+            ${needsTaskFields ? `
+              ${!isPersonal ? `
+                <select name="assignee" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary); margin-bottom: 0.5rem;">
+                  ${this.getMemberOptions()}
+                </select>
+              ` : ''}
               <input
                 type="date"
                 name="due_date"
@@ -1255,6 +1316,9 @@ class UIManager {
 
     if (type === 'shopping') {
       await db.addShoppingItem(name, notes);
+    } else if (type === 'personal') {
+      const dueDate = formData.get('due_date') || null;
+      await db.addPersonalTask(name, dueDate, notes);
     } else {
       const assignee = formData.get('assignee') || null;
       const dueDate = formData.get('due_date') || null;
@@ -1288,10 +1352,14 @@ class UIManager {
 
     // Add task-specific fields
     if (type !== 'shopping') {
-      const assignee = formData.get('assignee') || null;
       const dueDate = formData.get('due_date') || null;
-      updates.assignee = assignee;
       updates.due_date = dueDate;
+
+      // Only add assignee for tasks and clifford (not personal)
+      if (type !== 'personal') {
+        const assignee = formData.get('assignee') || null;
+        updates.assignee = assignee;
+      }
     }
 
     console.log('[submitEditForm] Updates:', updates);
@@ -1310,6 +1378,8 @@ class UIManager {
       await db.updateTask(id, updates);
     } else if (type === 'clifford') {
       await db.updateClifford(id, updates);
+    } else if (type === 'personal') {
+      await db.updatePersonalTask(id, updates);
     }
 
     console.log('[submitEditForm] Item updated successfully');
@@ -1345,11 +1415,22 @@ class UIManager {
    * Toggle task
    */
   async toggleTask(type, id) {
-    const items = type === 'tasks' ? store.getTasks() : store.getClifford();
+    let items, updateFn;
+
+    if (type === 'tasks') {
+      items = store.getTasks();
+      updateFn = db.updateTask.bind(db);
+    } else if (type === 'clifford') {
+      items = store.getClifford();
+      updateFn = db.updateClifford.bind(db);
+    } else if (type === 'personal') {
+      items = store.getPersonalTasks();
+      updateFn = db.updatePersonalTask.bind(db);
+    }
+
     const item = items.find(i => String(i.id) === String(id));
 
     if (item) {
-      const updateFn = type === 'tasks' ? db.updateTask.bind(db) : db.updateClifford.bind(db);
       await updateFn(id, { completed: !item.completed });
     }
   }
@@ -1366,6 +1447,8 @@ class UIManager {
       await db.deleteTask(id);
     } else if (type === 'clifford') {
       await db.deleteClifford(id);
+    } else if (type === 'personal') {
+      await db.deletePersonalTask(id);
     }
 
     this.showToast('Item deleted', 'success');
@@ -1415,6 +1498,8 @@ class UIManager {
     }
 
     const isShopping = type === 'shopping';
+    const isPersonal = type === 'personal';
+    const needsTaskFields = !isShopping; // tasks, clifford, and personal all have due date
 
     const modalHtml = `
       <div class="modal-overlay" data-action="close-modal">
@@ -1431,10 +1516,12 @@ class UIManager {
               required
               autofocus
             />
-            ${!isShopping ? `
-              <select name="assignee" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary); margin-bottom: 0.5rem;">
-                ${this.getMemberOptions(item.assignee)}
-              </select>
+            ${needsTaskFields ? `
+              ${!isPersonal ? `
+                <select name="assignee" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary); margin-bottom: 0.5rem;">
+                  ${this.getMemberOptions(item.assignee)}
+                </select>
+              ` : ''}
               <input
                 type="date"
                 name="due_date"
@@ -1607,6 +1694,8 @@ class UIManager {
       items = store.getTasks().filter(item => item.completed);
     } else if (type === 'clifford') {
       items = store.getClifford().filter(item => item.completed);
+    } else if (type === 'personal') {
+      items = store.getPersonalTasks().filter(item => item.completed);
     }
 
     if (items.length === 0) return;
@@ -1621,6 +1710,8 @@ class UIManager {
         return db.deleteTask(item.id);
       } else if (type === 'clifford') {
         return db.deleteClifford(item.id);
+      } else if (type === 'personal') {
+        return db.deletePersonalTask(item.id);
       }
     });
 

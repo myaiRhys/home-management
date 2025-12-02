@@ -16,6 +16,7 @@ class Store {
       shopping: [],
       tasks: [],
       clifford: [],
+      personalTasks: [],
       quickAdd: {
         shopping: [],
         tasks: [],
@@ -211,6 +212,10 @@ class Store {
     return this.state.clifford;
   }
 
+  getPersonalTasks() {
+    return this.state.personalTasks;
+  }
+
   getQuickAdd(type) {
     return this.state.quickAdd[type] || [];
   }
@@ -254,6 +259,10 @@ class Store {
 
   setClifford(clifford) {
     this.setState({ clifford });
+  }
+
+  setPersonalTasks(personalTasks) {
+    this.setState({ personalTasks });
   }
 
   setQuickAdd(type, items) {
