@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>App Diagnostic Tool</title>
+  <style>
+    body {
+      font-family: monospace;
+      padding: 20px;
+      background: #1a1a1a;
+      color: #fff;
+    }
+    h1 { color: #37C5AB; }
+    h2 { color: #529CCA; margin-top: 30px; }
+    button {
+      margin: 5px;
+      padding: 10px 20px;
+      background: #37C5AB;
+      border: none;
+      color: white;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    button:hover { background: #2EA58E; }
+    #output {
+      background: #252525;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      font-size: 12px;
+      max-height: 600px;
+      overflow-y: auto;
+    }
+    .error { color: #E16259; }
+    .success { color: #37C5AB; }
+    .warning { color: #E9B949; }
+    .info { color: #529CCA; }
+    .section {
+      background: #2a2a2a;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 4px;
+      border-left: 3px solid #37C5AB;
+    }
+    .test-group {
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔍 Thibault App Diagnostic Tool</h1>
+
+  <div class="section">
+    <h2>Quick Tests</h2>
+    <button onclick="runAllTests()">🚀 Run All Tests</button>
+    <button onclick="testNavigation()">🧭 Test Navigation</button>
+    <button onclick="testStore()">📦 Test Store</button>
+    <button onclick="testEventListeners()">👆 Test Event Listeners</button>
+    <button onclick="testUI()">🎨 Test UI Rendering</button>
+    <button onclick="clearOutput()">🗑️ Clear Output</button>
+  </div>
+
+  <div class="section">
+    <h2>Manual Navigation</h2>
+    <button onclick="navigateTo('dashboard')">📊 Dashboard</button>
+    <button onclick="navigateTo('shopping')">🛒 Shopping</button>
+    <button onclick="navigateTo('tasks')">✓ Tasks</button>
+    <button onclick="navigateTo('clifford')">👶 Clifford</button>
+    <button onclick="navigateTo('settings')">⚙️ Settings</button>
+  </div>
+
+  <div class="section">
+    <h2>Console Monitor</h2>
+    <button onclick="startMonitoring()">▶️ Start Monitoring</button>
+    <button onclick="stopMonitoring()">⏸️ Stop Monitoring</button>
+  </div>
+
+  <div id="output">Click "Run All Tests" to start diagnostics...</div>
+
+  <script type="module">
+    const output = document.getElementById('output');
+    let monitoring = false;
+    let originalConsole = {};
+
+    function log(message, type = 'info') {
+      const timestamp = new Date().toLocaleTimeString();
+      const className = type || 'info';
+      output.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span>\n`;
+      output.scrollTop = output.scrollHeight;
+      console.log(`[DIAGNOSTIC] ${message}`);
+    }
+
+    window.clearOutput = () => {
+      output.innerHTML = '';
+      log('Output cleared', 'info');
+    };
+
+    // Test 1: Check if store exists and is accessible
+    async function testStore() {
+      log('\n=== TESTING STORE ===', 'info');
+      try {
+        if (!window.store) {
+          log('❌ window.store is not defined!', 'error');
+          return false;
+        }
+        log('✅ window.store exists', 'success');
+
+        const state = window.store.getState();
+        log(`Current view: ${state.currentView}`, 'info');
+        log(`User: ${state.user ? state.user.email : 'null'}`, 'info');
+        log(`Household: ${state.household ? state.household.name : 'null'}`, 'info');
+        log(`Theme: ${state.theme}`, 'info');
+        log(`Loading: ${state.loading}`, 'info');
+
+        return true;
+      } catch (error) {
+        log(`❌ Store test failed: ${error.message}`, 'error');
+        log(`Stack: ${error.stack}`, 'error');
+        return false;
+      }
+    }
+
+    // Test 2: Check UI object
+    async function testUI() {
+      log('\n=== TESTING UI ===', 'info');
+      try {
+        // Check if app element exists
+        const app = document.getElementById('app');
+        if (!app) {
+          log('❌ #app element not found in DOM!', 'error');
+          log('Opening main app in new window...', 'warning');
+          window.open('./index.html', '_blank');
+          return false;
+        }
+        log('✅ #app element exists', 'success');
+
+        // Check if bottom nav exists
+        const bottomNav = document.querySelector('.bottom-nav');
+        if (!bottomNav) {
+          log('❌ .bottom-nav not found - app may not be rendered', 'error');
+          return false;
+        }
+        log('✅ Bottom navigation exists', 'success');
+
+        // Check all nav tabs
+        const tabs = document.querySelectorAll('.nav-tab');
+        log(`Found ${tabs.length} navigation tabs`, 'info');
+        tabs.forEach((tab, i) => {
+          const view = tab.dataset.view;
+          const action = tab.dataset.action;
+          log(`  Tab ${i}: view="${view}", action="${action}", active="${tab.classList.contains('active')}"`, 'info');
+        });
+
+        return true;
+      } catch (error) {
+        log(`❌ UI test failed: ${error.message}`, 'error');
+        return false;
+      }
+    }
+
+    // Test 3: Test navigation
+    async function testNavigation() {
+      log('\n=== TESTING NAVIGATION ===', 'info');
+      try {
+        if (!window.store) {
+          log('❌ Cannot test navigation - window.store not available', 'error');
+          log('Please open the main app first: http://127.0.0.1:8000/index.html', 'warning');
+          return false;
+        }
+
+        const views = ['dashboard', 'shopping', 'tasks', 'clifford', 'settings'];
+
+        for (const view of views) {
+          log(`Testing navigation to: ${view}`, 'info');
+          try {
+            window.store.setCurrentView(view);
+            await new Promise(resolve => setTimeout(resolve, 100));
+            const currentView = window.store.getCurrentView();
+            if (currentView === view) {
+              log(`  ✅ Successfully navigated to ${view}`, 'success');
+            } else {
+              log(`  ❌ Failed to navigate to ${view}. Current: ${currentView}`, 'error');
+            }
+          } catch (error) {
+            log(`  ❌ Error navigating to ${view}: ${error.message}`, 'error');
+          }
+        }
+
+        return true;
+      } catch (error) {
+        log(`❌ Navigation test failed: ${error.message}`, 'error');
+        return false;
+      }
+    }
+
+    // Test 4: Test event listeners
+    async function testEventListeners() {
+      log('\n=== TESTING EVENT LISTENERS ===', 'info');
+      try {
+        // Find settings button
+        const settingsTab = document.querySelector('[data-view="settings"]');
+        if (!settingsTab) {
+          log('❌ Settings tab button not found!', 'error');
+          return false;
+        }
+        log('✅ Settings tab button found', 'success');
+        log(`  action: ${settingsTab.dataset.action}`, 'info');
+        log(`  view: ${settingsTab.dataset.view}`, 'info');
+        log(`  classList: ${settingsTab.classList}`, 'info');
+
+        // Check if it has event listeners
+        log('Testing click on settings tab...', 'info');
+
+        // Add temporary monitor
+        const oldView = window.store.getCurrentView();
+        log(`Current view before click: ${oldView}`, 'info');
+
+        settingsTab.click();
+
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        const newView = window.store.getCurrentView();
+        log(`Current view after click: ${newView}`, 'info');
+
+        if (newView === 'settings') {
+          log('✅ Settings tab click worked!', 'success');
+          return true;
+        } else {
+          log('❌ Settings tab click did NOT change view', 'error');
+          log('This indicates an event listener issue', 'warning');
+          return false;
+        }
+      } catch (error) {
+        log(`❌ Event listener test failed: ${error.message}`, 'error');
+        return false;
+      }
+    }
+
+    // Navigate to specific view
+    window.navigateTo = async (view) => {
+      log(`\n=== MANUAL NAVIGATION TO: ${view} ===`, 'info');
+      if (!window.store) {
+        log('❌ window.store not available', 'error');
+        log('Opening main app...', 'warning');
+        window.open('./index.html', '_blank');
+        return;
+      }
+
+      try {
+        log(`Setting view to: ${view}`, 'info');
+        window.store.setCurrentView(view);
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const current = window.store.getCurrentView();
+        log(`Current view is now: ${current}`, current === view ? 'success' : 'error');
+      } catch (error) {
+        log(`❌ Navigation failed: ${error.message}`, 'error');
+      }
+    };
+
+    // Start console monitoring
+    window.startMonitoring = () => {
+      if (monitoring) {
+        log('Already monitoring', 'warning');
+        return;
+      }
+
+      log('\n=== STARTED CONSOLE MONITORING ===', 'info');
+      monitoring = true;
+
+      originalConsole.log = console.log;
+      originalConsole.error = console.error;
+      originalConsole.warn = console.warn;
+
+      console.log = function(...args) {
+        log(`[LOG] ${args.join(' ')}`, 'info');
+        originalConsole.log.apply(console, args);
+      };
+
+      console.error = function(...args) {
+        log(`[ERROR] ${args.join(' ')}`, 'error');
+        originalConsole.error.apply(console, args);
+      };
+
+      console.warn = function(...args) {
+        log(`[WARN] ${args.join(' ')}`, 'warning');
+        originalConsole.warn.apply(console, args);
+      };
+
+      log('All console.log, console.error, console.warn will now appear here', 'success');
+      log('Try clicking the settings tab in the main app now', 'info');
+    };
+
+    // Stop monitoring
+    window.stopMonitoring = () => {
+      if (!monitoring) {
+        log('Not monitoring', 'warning');
+        return;
+      }
+
+      console.log = originalConsole.log;
+      console.error = originalConsole.error;
+      console.warn = originalConsole.warn;
+
+      monitoring = false;
+      log('\n=== STOPPED CONSOLE MONITORING ===', 'info');
+    };
+
+    // Run all tests
+    window.runAllTests = async () => {
+      clearOutput();
+      log('🚀 RUNNING ALL DIAGNOSTIC TESTS\n', 'success');
+
+      // Check if we need to open main app
+      if (!window.opener && !document.getElementById('app')) {
+        log('⚠️  Main app not detected. Opening in new window...', 'warning');
+        window.open('./index.html', 'mainApp');
+        log('Please run tests again after the app loads', 'info');
+        return;
+      }
+
+      await testStore();
+      await testUI();
+      await testNavigation();
+      await testEventListeners();
+
+      log('\n✅ ALL TESTS COMPLETED', 'success');
+      log('Check results above for any errors', 'info');
+    };
+
+    // Initialize
+    setTimeout(() => {
+      log('Diagnostic tool ready', 'success');
+      log('Tip: Open the main app (index.html) first, then run these tests', 'info');
+
+      // Auto-detect if running in same window as app
+      if (document.getElementById('app')) {
+        log('✅ Main app detected in same window', 'success');
+      }
+    }, 100);
+
+    // Expose functions globally
+    window.testStore = testStore;
+    window.testUI = testUI;
+    window.testNavigation = testNavigation;
+    window.testEventListeners = testEventListeners;
+  </script>
+</body>
+</html>
