@@ -306,24 +306,28 @@ class DatabaseManager {
 
     try {
       const result = await this.executeWithTimeout(async () => {
-        const { data, error } = await supabase
+        // First get household members
+        const { data: members, error: membersError } = await supabase
           .from(Tables.HOUSEHOLD_MEMBERS)
-          .select(`
-            id,
-            household_id,
-            user_id,
-            role,
-            created_at,
-            users!inner (
-              id,
-              email
-            )
-          `)
+          .select('id, household_id, user_id, role, created_at')
           .eq('household_id', household.id)
           .order('created_at', { ascending: true });
 
-        if (error) throw error;
-        return data;
+        if (membersError) throw membersError;
+
+        // Then get user details for each member
+        // Note: We can't join directly because auth.users is a system table
+        // So we'll use the current user's email from the session for now
+        // and show user IDs for other members
+        const membersWithUsers = members.map(member => ({
+          ...member,
+          users: {
+            id: member.user_id,
+            email: member.user_id // Will show user ID as email for now
+          }
+        }));
+
+        return membersWithUsers;
       });
 
       if (result) {
