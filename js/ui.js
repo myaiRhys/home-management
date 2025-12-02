@@ -1132,11 +1132,14 @@ class UIManager {
    * Submit edit form
    */
   async submitEditForm(form) {
+    console.log('[submitEditForm] Starting...');
     const formData = new FormData(form);
     const type = formData.get('type');
     const id = formData.get('id');
     const name = formData.get('name');
     const notes = formData.get('notes') || '';
+
+    console.log('[submitEditForm] Form data:', { type, id, name, notes });
 
     const updates = { name, notes };
 
@@ -1148,7 +1151,16 @@ class UIManager {
       updates.due_date = dueDate;
     }
 
-    // Update the item
+    console.log('[submitEditForm] Updates:', updates);
+
+    // Close modal FIRST (before the update triggers a re-render)
+    const formContainer = document.getElementById('add-form-container');
+    const tempContainer = document.getElementById('edit-form-temp');
+    if (formContainer) formContainer.innerHTML = '';
+    if (tempContainer) tempContainer.remove();
+
+    // Update the item (this may trigger a re-render)
+    console.log('[submitEditForm] Updating item...');
     if (type === 'shopping') {
       await db.updateShoppingItem(id, updates);
     } else if (type === 'tasks') {
@@ -1157,12 +1169,7 @@ class UIManager {
       await db.updateClifford(id, updates);
     }
 
-    // Close modal
-    const formContainer = document.getElementById('add-form-container');
-    const tempContainer = document.getElementById('edit-form-temp');
-    if (formContainer) formContainer.innerHTML = '';
-    if (tempContainer) tempContainer.remove();
-
+    console.log('[submitEditForm] Item updated successfully');
     this.showToast(`${name} updated!`, 'success');
   }
 
