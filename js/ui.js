@@ -935,6 +935,7 @@ class UIManager {
     if (!target) return;
 
     const action = target.dataset.action;
+    console.log('[handleClick] Action triggered:', action, 'Element:', target);
 
     switch (action) {
       case 'navigate':
@@ -1091,7 +1092,7 @@ class UIManager {
 
     container.innerHTML = `
       <div class="modal-overlay" data-action="close-modal">
-        <div class="modal" onclick="event.stopPropagation()">
+        <div class="modal">
           <h2>${isShopping ? this.t('addItem') : this.t('addTask')}</h2>
           <form id="add-item-form">
             <input type="hidden" name="type" value="${type}">
@@ -1128,35 +1129,15 @@ class UIManager {
       </div>
     `;
 
-    // Add close handler with event capturing
-    const closeButton = container.querySelector('[data-action="close-modal"]');
-    console.log('[showAddForm] Close button found:', closeButton ? 'YES' : 'NO');
-    if (closeButton) {
-      console.log('[showAddForm] Close button element:', closeButton);
-      console.log('[showAddForm] Close button parent:', closeButton.parentElement);
+    console.log('[showAddForm] Form container updated with add form HTML');
 
-      // Use capture phase to catch the event early
-      closeButton.addEventListener('click', (e) => {
-        console.log('[showAddForm] Close button CLICKED!', e);
-        e.stopPropagation(); // Prevent bubbling
-        console.log('[showAddForm] Clearing container');
-        container.innerHTML = '';
-      }, true); // Use capture phase
-
-      // Also try without capture
-      closeButton.addEventListener('click', (e) => {
-        console.log('[showAddForm] Close button clicked (bubble phase)');
-      });
-    }
-
-    // Also add overlay click handler
-    const overlay = container.querySelector('.modal-overlay');
-    if (overlay) {
-      overlay.addEventListener('click', (e) => {
-        console.log('[showAddForm] Overlay clicked, target:', e.target.className);
-        if (e.target === overlay) {
-          console.log('[showAddForm] Overlay clicked directly, clearing container');
-          container.innerHTML = '';
+    // Prevent clicks inside modal from closing it (but allow button actions to work)
+    const modal = container.querySelector('.modal');
+    if (modal) {
+      modal.addEventListener('click', (e) => {
+        // Only stop propagation if we're not clicking on an action element
+        if (!e.target.closest('[data-action]')) {
+          e.stopPropagation();
         }
       });
     }
@@ -1336,7 +1317,7 @@ class UIManager {
 
     const modalHtml = `
       <div class="modal-overlay" data-action="close-modal">
-        <div class="modal" onclick="event.stopPropagation()">
+        <div class="modal">
           <h2>${this.t('edit')}</h2>
           <form id="edit-item-form">
             <input type="hidden" name="type" value="${type}">
@@ -1399,16 +1380,16 @@ class UIManager {
       console.log('[showEditForm] Form has submit button:', editForm.querySelector('[type="submit"]') ? 'YES' : 'NO');
     }
 
-    // Add close handler
-    document.querySelector('.modal-overlay').addEventListener('click', (e) => {
-      if (e.target.classList.contains('modal-overlay') ||
-          e.target.dataset.action === 'close-modal') {
-        const formContainer = document.getElementById('add-form-container');
-        const tempContainer = document.getElementById('edit-form-temp');
-        if (formContainer) formContainer.innerHTML = '';
-        if (tempContainer) tempContainer.remove();
-      }
-    });
+    // Prevent clicks inside modal from closing it (but allow button actions to work)
+    const modalDiv = (formContainer || container).querySelector('.modal');
+    if (modalDiv) {
+      modalDiv.addEventListener('click', (e) => {
+        // Only stop propagation if we're not clicking on an action element
+        if (!e.target.closest('[data-action]')) {
+          e.stopPropagation();
+        }
+      });
+    }
   }
 
   /**
