@@ -1135,8 +1135,10 @@ class UIManager {
     const modal = container.querySelector('.modal');
     if (modal) {
       modal.addEventListener('click', (e) => {
-        // Only stop propagation if we're not clicking on an action element
-        if (!e.target.closest('[data-action]')) {
+        const actionElement = e.target.closest('[data-action]');
+        // Stop propagation UNLESS clicking on an action element that is NOT the overlay
+        // (overlay is an ancestor, we don't want clicks on inputs to trigger it)
+        if (!actionElement || actionElement.classList.contains('modal-overlay')) {
           e.stopPropagation();
         }
       });
@@ -1384,8 +1386,10 @@ class UIManager {
     const modalDiv = (formContainer || container).querySelector('.modal');
     if (modalDiv) {
       modalDiv.addEventListener('click', (e) => {
-        // Only stop propagation if we're not clicking on an action element
-        if (!e.target.closest('[data-action]')) {
+        const actionElement = e.target.closest('[data-action]');
+        // Stop propagation UNLESS clicking on an action element that is NOT the overlay
+        // (overlay is an ancestor, we don't want clicks on inputs to trigger it)
+        if (!actionElement || actionElement.classList.contains('modal-overlay')) {
           e.stopPropagation();
         }
       });
