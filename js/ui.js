@@ -1000,23 +1000,25 @@ class UIManager {
    * Handle form submissions
    */
   async handleSubmit(e) {
-    console.log('[handleSubmit] Form submitted:', e.target.id);
     e.preventDefault();
     const form = e.target;
+    const formId = form.getAttribute('id'); // Use getAttribute to avoid conflicts with named inputs
 
-    if (form.id === 'auth-form') {
+    console.log('[handleSubmit] Form submitted, ID:', formId);
+
+    if (formId === 'auth-form') {
       await this.signIn();
-    } else if (form.id === 'create-household-form') {
+    } else if (formId === 'create-household-form') {
       await this.createHousehold();
-    } else if (form.id === 'join-household-form') {
+    } else if (formId === 'join-household-form') {
       await this.joinHousehold();
-    } else if (form.id === 'add-item-form') {
+    } else if (formId === 'add-item-form') {
       await this.submitAddForm(form);
-    } else if (form.id === 'edit-item-form') {
+    } else if (formId === 'edit-item-form') {
       console.log('[handleSubmit] Calling submitEditForm');
       await this.submitEditForm(form);
     } else {
-      console.warn('[handleSubmit] Unknown form ID:', form.id);
+      console.warn('[handleSubmit] Unknown form ID:', formId);
     }
   }
 
