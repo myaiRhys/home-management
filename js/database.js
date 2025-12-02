@@ -306,47 +306,76 @@ class DatabaseManager {
 
     try {
       const result = await this.executeWithTimeout(async () => {
-        // Get household members with profiles
-        const { data: members, error: membersError } = await supabase
-          .from(Tables.HOUSEHOLD_MEMBERS)
-          .select(`
-            id,
-            household_id,
-            user_id,
-            role,
-            created_at,
-            profiles!household_members_user_id_fkey (
-              display_name
-            )
-          `)
-          .eq('household_id', household.id)
-          .order('created_at', { ascending: true });
+        // Try to get household members with profiles first
+        let members = null;
+        let membersError = null;
+
+        // First attempt: try with profiles join
+        try {
+          const response = await supabase
+            .from(Tables.HOUSEHOLD_MEMBERS)
+            .select(`
+              id,
+              household_id,
+              user_id,
+              role,
+              created_at,
+              profiles (
+                display_name
+              )
+            `)
+            .eq('household_id', household.id)
+            .order('created_at', { ascending: true });
+
+          members = response.data;
+          membersError = response.error;
+        } catch (profilesError) {
+          console.log('[DB] Profiles table not found, fetching without profiles');
+          // Fallback: get members without profiles if table doesn't exist
+          const response = await supabase
+            .from(Tables.HOUSEHOLD_MEMBERS)
+            .select('id, household_id, user_id, role, created_at')
+            .eq('household_id', household.id)
+            .order('created_at', { ascending: true });
+
+          members = response.data;
+          membersError = response.error;
+        }
 
         if (membersError) {
           console.error('[DB] Error loading members:', membersError);
           throw membersError;
         }
 
+        console.log('[DB] Loaded members:', members);
+
         const currentUserId = authManager.getCurrentUser()?.id;
 
         // Map to expected structure with display names
-        const membersWithUsers = members.map((member, index) => ({
-          id: member.id,
-          household_id: member.household_id,
-          user_id: member.user_id,
-          role: member.role,
-          created_at: member.created_at,
-          users: {
-            id: member.user_id,
-            email: member.profiles?.display_name ||
-                   (member.user_id === currentUserId ? 'You' : `Member ${index + 1}`)
-          }
-        }));
+        const membersWithUsers = members.map((member, index) => {
+          const displayName = member.profiles?.display_name ||
+                            (member.user_id === currentUserId ? 'You' : `Member ${index + 1}`);
+
+          console.log('[DB] Member:', member.user_id, 'Display name:', displayName);
+
+          return {
+            id: member.id,
+            household_id: member.household_id,
+            user_id: member.user_id,
+            role: member.role,
+            created_at: member.created_at,
+            users: {
+              id: member.user_id,
+              email: displayName
+            }
+          };
+        });
 
         return membersWithUsers;
       });
 
       if (result) {
+        console.log('[DB] Setting household members in store:', result);
         store.setHouseholdMembers(result);
       }
 
