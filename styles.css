@@ -574,6 +574,22 @@ p {
   font-size: 1rem;
 }
 
+.creator-initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: var(--primary);
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  margin-right: 0.25rem;
+  flex-shrink: 0;
+}
+
 .empty-message {
   text-align: center;
   color: var(--text-light);

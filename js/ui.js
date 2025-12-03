@@ -217,7 +217,9 @@ class UIManager {
       }
 
       // Update other UI elements as needed
-      if (state.language !== prevState?.language || state.theme !== prevState?.theme) {
+      if (state.language !== prevState?.language ||
+          state.theme !== prevState?.theme ||
+          JSON.stringify(state.sortPreferences) !== JSON.stringify(prevState?.sortPreferences)) {
         this.render();
       }
     });
@@ -611,6 +613,7 @@ class UIManager {
     const isPending = queueManager.hasPendingOperations('shopping', item.id);
     const quantity = item.quantity || 1;
     const quantityPrefix = quantity > 1 ? `${quantity}× ` : '';
+    const creatorInitials = this.getCreatorInitials(item.created_by);
 
     return `
       <div class="list-item ${item.completed ? 'completed' : ''} ${isPending ? 'pending' : ''}" data-id="${item.id}">
@@ -626,6 +629,7 @@ class UIManager {
           ${item.notes ? `<div class="item-notes">${this.escapeHtml(item.notes)}</div>` : ''}
         </div>
         <div class="item-actions">
+          ${creatorInitials ? `<span class="creator-initials">${creatorInitials}</span>` : ''}
           ${isPending ? '<span class="pending-indicator">⏳</span>' : ''}
           <button class="btn-icon-small" data-action="edit-item" data-type="shopping" data-id="${item.id}">✎</button>
           <button class="btn-icon-small" data-action="delete-item" data-type="shopping" data-id="${item.id}">×</button>
@@ -865,6 +869,7 @@ class UIManager {
     const isPending = queueManager.hasPendingOperations(type, item.id);
     const dueStatus = this.getDueStatus(item.due_date);
     const assigneeName = this.getMemberName(item.assignee);
+    const creatorInitials = this.getCreatorInitials(item.created_by);
 
     return `
       <div class="list-item ${item.completed ? 'completed' : ''} ${isPending ? 'pending' : ''}" data-id="${item.id}">
@@ -886,6 +891,7 @@ class UIManager {
         </div>
         ${!compact ? `
           <div class="item-actions">
+            ${creatorInitials ? `<span class="creator-initials">${creatorInitials}</span>` : ''}
             ${isPending ? '<span class="pending-indicator">⏳</span>' : ''}
             <button class="btn-icon-small" data-action="edit-item" data-type="${type}" data-id="${item.id}">✎</button>
             <button class="btn-icon-small" data-action="delete-item" data-type="${type}" data-id="${item.id}">×</button>
@@ -1328,6 +1334,38 @@ class UIManager {
     const members = store.getHouseholdMembers();
     const member = members.find(m => m.user_id === userId);
     return member?.users?.email || null;
+  }
+
+  /**
+   * Get creator initials from user ID
+   */
+  getCreatorInitials(userId) {
+    if (!userId) return null;
+
+    const currentUser = authManager.getCurrentUser();
+    const members = store.getHouseholdMembers();
+    const member = members.find(m => m.user_id === userId);
+
+    if (!member) return null;
+
+    // Get display name from profiles or email
+    const displayName = member.profiles?.display_name || member.users?.email;
+    if (!displayName) return null;
+
+    // Extract initials
+    const parts = displayName.split(/[\s@._-]+/);
+    if (parts.length >= 2) {
+      // First letter of first two parts
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    } else if (parts.length === 1 && parts[0].length >= 2) {
+      // First two letters if only one part
+      return parts[0].substring(0, 2).toUpperCase();
+    } else if (parts[0].length === 1) {
+      // Just one letter if that's all we have
+      return parts[0].toUpperCase();
+    }
+
+    return null;
   }
 
   /**

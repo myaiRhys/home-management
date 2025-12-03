@@ -479,6 +479,7 @@ class DatabaseManager {
 
   async addShoppingItem(name, notes = '', quantity = 1) {
     const household = authManager.getCurrentHousehold();
+    const user = authManager.getCurrentUser();
     if (!household) {
       return { data: null, error: new Error('No household') };
     }
@@ -489,6 +490,7 @@ class DatabaseManager {
       notes,
       quantity: quantity || 1,
       completed: false,
+      created_by: user?.id || null,
       created_at: new Date().toISOString()
     };
 
@@ -565,6 +567,7 @@ class DatabaseManager {
 
   async addTask(name, assignee = null, dueDate = null, notes = '') {
     const household = authManager.getCurrentHousehold();
+    const user = authManager.getCurrentUser();
     if (!household) {
       return { data: null, error: new Error('No household') };
     }
@@ -576,6 +579,7 @@ class DatabaseManager {
       due_date: dueDate,
       notes,
       completed: false,
+      created_by: user?.id || null,
       created_at: new Date().toISOString()
     };
 
@@ -647,6 +651,7 @@ class DatabaseManager {
 
   async addClifford(name, assignee = null, dueDate = null, notes = '') {
     const household = authManager.getCurrentHousehold();
+    const user = authManager.getCurrentUser();
     if (!household) {
       return { data: null, error: new Error('No household') };
     }
@@ -658,6 +663,7 @@ class DatabaseManager {
       due_date: dueDate,
       notes,
       completed: false,
+      created_by: user?.id || null,
       created_at: new Date().toISOString()
     };
 
