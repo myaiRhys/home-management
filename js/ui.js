@@ -217,7 +217,9 @@ class UIManager {
       }
 
       // Update other UI elements as needed
-      if (state.language !== prevState?.language || state.theme !== prevState?.theme) {
+      if (state.language !== prevState?.language ||
+          state.theme !== prevState?.theme ||
+          JSON.stringify(state.sortPreferences) !== JSON.stringify(prevState?.sortPreferences)) {
         this.render();
       }
     });
