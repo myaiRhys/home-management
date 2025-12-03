@@ -224,7 +224,8 @@ class DatabaseManager {
       const { data: household, error: householdError } = await this.insert(Tables.HOUSEHOLDS, {
         name,
         invite_code: inviteCode,
-        created_by: user.id
+        created_by: user.id,
+        custom_clifford_name: 'Clifford'
       });
 
       if (householdError) {
@@ -425,6 +426,27 @@ class DatabaseManager {
       console.error('[DB] Update display name error:', error);
       return { data: null, error };
     }
+  }
+
+  /**
+   * Update household custom clifford name
+   */
+  async updateHouseholdCustomName(customName) {
+    const household = authManager.getCurrentHousehold();
+    if (!household) {
+      return { data: null, error: new Error('No household') };
+    }
+
+    const { data, error } = await this.update(Tables.HOUSEHOLDS, household.id, {
+      custom_clifford_name: customName
+    });
+
+    if (!error && data) {
+      // Update local store
+      store.setHousehold({ ...household, custom_clifford_name: customName });
+    }
+
+    return { data, error };
   }
 
   /**

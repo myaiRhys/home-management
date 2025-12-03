@@ -71,7 +71,10 @@ const translations = {
     displayNameUpdated: 'Display name updated!',
     clearCompleted: 'Clear All',
     confirmClearCompleted: 'Delete all completed items? This cannot be undone.',
-    clearedCompleted: 'Completed items cleared!'
+    clearedCompleted: 'Completed items cleared!',
+    childName: 'Child Name',
+    updateName: 'Update Name',
+    nameUpdated: 'Name updated successfully!'
   },
   af: {
     appName: 'Thibault',
@@ -138,7 +141,10 @@ const translations = {
     displayNameUpdated: 'Vertoonnaam opgedateer!',
     clearCompleted: 'Maak Alles Skoon',
     confirmClearCompleted: 'Verwyder alle voltooide items? Dit kan nie ongedaan gemaak word nie.',
-    clearedCompleted: 'Voltooide items verwyder!'
+    clearedCompleted: 'Voltooide items verwyder!',
+    childName: 'Kind Naam',
+    updateName: 'Opdateer Naam',
+    nameUpdated: 'Naam suksesvol opgedateer!'
   }
 };
 
@@ -157,6 +163,15 @@ class UIManager {
   t(key) {
     const lang = store.getLanguage();
     return translations[lang]?.[key] || translations.en[key] || key;
+  }
+
+  /**
+   * Get custom clifford name
+   */
+  getCliffordName() {
+    const household = store.getHousehold();
+    // Use custom name if set, otherwise fall back to translated 'clifford'
+    return household?.custom_clifford_name || this.t('clifford');
   }
 
   /**
@@ -401,7 +416,7 @@ class UIManager {
       { id: 'dashboard', label: this.t('dashboard'), icon: '📊' },
       { id: 'shopping', label: this.t('shopping'), icon: '🛒' },
       { id: 'tasks', label: this.t('tasks'), icon: '✓' },
-      { id: 'clifford', label: this.t('clifford'), icon: '👶' },
+      { id: 'clifford', label: this.getCliffordName(), icon: '👶' },
       { id: 'settings', label: this.t('settings'), icon: '⚙️' }
     ];
 
@@ -450,7 +465,7 @@ class UIManager {
           <div class="dashboard-card" data-action="navigate" data-view="clifford">
             <div class="card-icon">👶</div>
             <div class="card-content">
-              <h3>${this.t('clifford')}</h3>
+              <h3>${this.getCliffordName()}</h3>
               <p class="card-count">${clifford.length} ${this.t('active').toLowerCase()}</p>
             </div>
           </div>
@@ -504,7 +519,7 @@ class UIManager {
 
         ${clifford.length > 0 ? `
           <div class="upcoming-group">
-            <h3>${this.t('clifford')}</h3>
+            <h3>${this.getCliffordName()}</h3>
             <div class="list">
               ${clifford.map(item => this.renderTaskItem(item, true, 'clifford')).join('')}
             </div>
@@ -729,7 +744,7 @@ class UIManager {
     return `
       <div class="view-container">
         <div class="view-header">
-          <h1>${this.t('clifford')}</h1>
+          <h1>${this.getCliffordName()}</h1>
           <div style="display: flex; align-items: center; gap: 0.5rem;">
             ${this.renderSortDropdown('clifford')}
             <button class="btn btn-icon" data-action="show-add-form" data-type="clifford">+</button>
@@ -918,6 +933,31 @@ class UIManager {
       <div class="view-container">
         <h1>${this.t('settings')}</h1>
 
+        ${household ? `
+          <div class="settings-section">
+            <h3>Personalization</h3>
+            <div class="setting-item">
+              <div style="flex: 1;">
+                <label>${this.t('childName')}</label>
+                <input
+                  type="text"
+                  id="custom-clifford-name"
+                  placeholder="Enter child name"
+                  value="${this.escapeHtml(household.custom_clifford_name || 'Clifford')}"
+                  maxlength="20"
+                  style="width: 100%; margin-top: 0.5rem; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary);"
+                />
+              </div>
+              <button
+                class="btn btn-primary"
+                data-action="update-clifford-name"
+                style="margin-left: 0.5rem; align-self: flex-end;">
+                ${this.t('updateName')}
+              </button>
+            </div>
+          </div>
+        ` : ''}
+
         <div class="settings-section">
           <h3>${this.t('displayName')}</h3>
           <div class="setting-item">
@@ -978,7 +1018,7 @@ class UIManager {
               ${this.t('tasks')}
             </button>
             <button class="btn btn-secondary" data-action="manage-quick-add" data-type="clifford">
-              ${this.t('clifford')}
+              ${this.getCliffordName()}
             </button>
           </div>
         ` : ''}
@@ -1176,6 +1216,10 @@ class UIManager {
 
       case 'update-display-name':
         await this.updateDisplayName();
+        break;
+
+      case 'update-clifford-name':
+        await this.updateCliffordName();
         break;
 
       case 'clear-completed':
@@ -1817,6 +1861,36 @@ class UIManager {
       this.showToast(this.t('displayNameUpdated'), 'success');
       // Clear input
       if (input) input.value = '';
+    }
+  }
+
+  /**
+   * Update custom clifford name
+   */
+  async updateCliffordName() {
+    const input = document.getElementById('custom-clifford-name');
+    const customName = input?.value?.trim();
+
+    if (!customName) {
+      this.showToast('Please enter a name', 'error');
+      return;
+    }
+
+    if (customName.length > 20) {
+      this.showToast('Name must be 20 characters or less', 'error');
+      return;
+    }
+
+    store.setLoading(true);
+    const { error } = await db.updateHouseholdCustomName(customName);
+    store.setLoading(false);
+
+    if (error) {
+      console.error('Update custom name error:', error);
+      this.showToast(error.message || 'Failed to update name', 'error');
+    } else {
+      this.showToast(this.t('nameUpdated'), 'success');
+      // UI will auto-refresh due to store update
     }
   }
 
