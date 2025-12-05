@@ -1931,8 +1931,15 @@ class UIManager {
       this.showToast('Failed to add quick add item', 'error');
     } else {
       this.showToast(this.t('quickAddItemAdded'), 'success');
-      // Refresh the modal to show the new item
-      this.manageQuickAdd(type);
+
+      // Clear the input field
+      const nameInput = form.querySelector('[name="name"]');
+      if (nameInput) {
+        nameInput.value = '';
+      }
+
+      // Update just the list portion without replacing the form
+      this.refreshQuickAddList(type);
     }
   }
 
@@ -1946,9 +1953,33 @@ class UIManager {
       this.showToast('Failed to delete quick add item', 'error');
     } else {
       this.showToast(this.t('quickAddItemDeleted'), 'success');
-      // Refresh the modal to show the updated list
-      this.manageQuickAdd(type);
+      // Update just the list portion without replacing the form
+      this.refreshQuickAddList(type);
     }
+  }
+
+  /**
+   * Refresh quick add list without replacing the form
+   */
+  refreshQuickAddList(type) {
+    const listContainer = document.querySelector('.quick-add-list');
+    if (!listContainer) return;
+
+    const items = store.getQuickAdd(type);
+
+    listContainer.innerHTML = items.length === 0 ? `<p class="empty-message">${this.t('noQuickAddItems')}</p>` :
+      items.map(item => `
+        <div class="quick-add-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; border-bottom: 1px solid var(--border-color);">
+          <span>${this.escapeHtml(item.name)}</span>
+          <button
+            class="btn-icon-small btn-danger"
+            data-action="delete-quick-add"
+            data-id="${item.id}"
+            data-type="${type}"
+            title="${this.t('delete')}"
+          >×</button>
+        </div>
+      `).join('');
   }
 
   /**
