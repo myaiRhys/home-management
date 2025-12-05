@@ -74,7 +74,11 @@ const translations = {
     clearedCompleted: 'Completed items cleared!',
     childName: 'Child Name',
     updateName: 'Update Name',
-    nameUpdated: 'Name updated successfully!'
+    nameUpdated: 'Name updated successfully!',
+    addQuickAdd: 'Add Quick Add',
+    noQuickAddItems: 'No quick add items yet',
+    quickAddItemAdded: 'Quick add item added!',
+    quickAddItemDeleted: 'Quick add item deleted!'
   },
   af: {
     appName: 'Thibault',
@@ -144,7 +148,11 @@ const translations = {
     clearedCompleted: 'Voltooide items verwyder!',
     childName: 'Kind Naam',
     updateName: 'Opdateer Naam',
-    nameUpdated: 'Naam suksesvol opgedateer!'
+    nameUpdated: 'Naam suksesvol opgedateer!',
+    addQuickAdd: 'Voeg Vinnig Byvoeg By',
+    noQuickAddItems: 'Nog geen vinnig byvoeg items nie',
+    quickAddItemAdded: 'Vinnig byvoeg item bygevoeg!',
+    quickAddItemDeleted: 'Vinnig byvoeg item verwyder!'
   }
 };
 
@@ -1235,6 +1243,10 @@ class UIManager {
       case 'switch-tasks-drawer':
         store.setTasksDrawer(target.dataset.drawer);
         break;
+
+      case 'delete-quick-add':
+        await this.deleteQuickAdd(target.dataset.id, target.dataset.type);
+        break;
     }
   }
 
@@ -1276,6 +1288,8 @@ class UIManager {
       } else if (formId === 'edit-item-form') {
         console.log('[handleSubmit] Calling submitEditForm');
         await this.submitEditForm(form);
+      } else if (formId === 'add-quick-add-form') {
+        await this.submitAddQuickAdd(form);
       } else {
         console.warn('[handleSubmit] Unknown form ID:', formId);
       }
@@ -1844,8 +1858,97 @@ class UIManager {
    * Manage quick add
    */
   manageQuickAdd(type) {
-    // TODO: Implement quick add management
-    this.showToast('Quick Add management coming soon', 'info');
+    const container = document.getElementById('add-form-container');
+    if (!container) return;
+
+    const items = store.getQuickAdd(type);
+    const typeName = type === 'clifford' ? this.getCliffordName() : this.t(type);
+
+    container.innerHTML = `
+      <div class="modal-overlay" data-action="close-modal">
+        <div class="modal">
+          <h2>${this.t('manageQuickAdd')}: ${typeName}</h2>
+
+          <div class="quick-add-list" style="margin-bottom: 1rem; max-height: 300px; overflow-y: auto;">
+            ${items.length === 0 ? `<p class="empty-message">${this.t('noQuickAddItems')}</p>` :
+              items.map(item => `
+                <div class="quick-add-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; border-bottom: 1px solid var(--border-color);">
+                  <span>${this.escapeHtml(item.name)}</span>
+                  <button
+                    class="btn-icon-small btn-danger"
+                    data-action="delete-quick-add"
+                    data-id="${item.id}"
+                    data-type="${type}"
+                    title="${this.t('delete')}"
+                  >×</button>
+                </div>
+              `).join('')
+            }
+          </div>
+
+          <form id="add-quick-add-form">
+            <input type="hidden" name="type" value="${type}">
+            <input
+              type="text"
+              name="name"
+              placeholder="${this.t('name')}"
+              required
+              autofocus
+              style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary); margin-bottom: 0.5rem;"
+            />
+            <div class="modal-actions">
+              <button type="button" class="btn btn-secondary" data-action="close-modal">${this.t('cancel')}</button>
+              <button type="submit" class="btn btn-primary">${this.t('addQuickAdd')}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    // Prevent clicks inside modal from closing it
+    const modal = container.querySelector('.modal');
+    if (modal) {
+      modal.addEventListener('click', (e) => {
+        const actionElement = e.target.closest('[data-action]');
+        if (!actionElement || actionElement.classList.contains('modal-overlay')) {
+          e.stopPropagation();
+        }
+      });
+    }
+  }
+
+  /**
+   * Submit add quick add form
+   */
+  async submitAddQuickAdd(form) {
+    const formData = new FormData(form);
+    const type = formData.get('type');
+    const name = formData.get('name');
+
+    const { error } = await db.addQuickAddItem(type, name);
+
+    if (error) {
+      this.showToast('Failed to add quick add item', 'error');
+    } else {
+      this.showToast(this.t('quickAddItemAdded'), 'success');
+      // Refresh the modal to show the new item
+      this.manageQuickAdd(type);
+    }
+  }
+
+  /**
+   * Delete quick add item
+   */
+  async deleteQuickAdd(id, type) {
+    const { error } = await db.deleteQuickAddItem(id, type);
+
+    if (error) {
+      this.showToast('Failed to delete quick add item', 'error');
+    } else {
+      this.showToast(this.t('quickAddItemDeleted'), 'success');
+      // Refresh the modal to show the updated list
+      this.manageQuickAdd(type);
+    }
   }
 
   /**
