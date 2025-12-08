@@ -900,16 +900,22 @@ class DatabaseManager {
       return { data: null, error: new Error('No household') };
     }
 
+    // Get current items to calculate next sort_order
+    const current = store.getQuickAdd(type);
+    const maxSortOrder = current.length > 0
+      ? Math.max(...current.map(item => item.sort_order || 0))
+      : 0;
+
     const item = {
       household_id: household.id,
       type,
-      name
+      name,
+      sort_order: maxSortOrder + 1
     };
 
     const { data, error } = await this.insert(Tables.QUICK_ADD, item);
 
     if (!error && data) {
-      const current = store.getQuickAdd(type);
       store.setQuickAdd(type, [...current, data]);
     }
 
