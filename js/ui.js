@@ -1564,27 +1564,35 @@ class UIManager {
     const type = formData.get('type');
     const name = formData.get('name');
     const notes = formData.get('notes') || '';
+    let result;
 
     if (type === 'shopping') {
       const quantity = parseInt(formData.get('quantity')) || 1;
-      await db.addShoppingItem(name, notes, quantity);
+      result = await db.addShoppingItem(name, notes, quantity);
     } else if (type === 'personal') {
       const dueDate = formData.get('due_date') || null;
-      await db.addPersonalTask(name, dueDate, notes);
+      result = await db.addPersonalTask(name, dueDate, notes);
     } else {
       const assignee = formData.get('assignee') || null;
       const dueDate = formData.get('due_date') || null;
 
       if (type === 'tasks') {
-        await db.addTask(name, assignee, dueDate, notes);
+        result = await db.addTask(name, assignee, dueDate, notes);
       } else if (type === 'clifford') {
-        await db.addClifford(name, assignee, dueDate, notes);
+        result = await db.addClifford(name, assignee, dueDate, notes);
       }
     }
 
     // Close modal
     document.getElementById('add-form-container').innerHTML = '';
-    this.showToast(`${name} added!`, 'success');
+
+    // Show appropriate message based on result
+    if (result && result.error) {
+      console.error('[submitAddForm] Add failed:', result.error);
+      this.showToast(`Failed to add ${name}. Please try again.`, 'error');
+    } else {
+      this.showToast(`${name} added!`, 'success');
+    }
   }
 
   /**
