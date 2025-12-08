@@ -417,6 +417,7 @@ class DatabaseManager {
             user_id: member.user_id,
             role: member.role,
             created_at: member.created_at,
+            profiles: member.profiles,
             users: {
               id: member.user_id,
               email: displayName
