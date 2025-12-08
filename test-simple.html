@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simple Database Test</title>
+  <style>
+    body {
+      font-family: monospace;
+      padding: 20px;
+      background: #1a1a1a;
+      color: #fff;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    button {
+      margin: 5px;
+      padding: 10px 20px;
+      background: #37C5AB;
+      border: none;
+      color: white;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    button:hover { background: #2EA58E; }
+    button:disabled {
+      background: #555;
+      cursor: not-allowed;
+    }
+    #output {
+      background: #252525;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      font-size: 12px;
+      max-height: 600px;
+      overflow-y: auto;
+    }
+    .error { color: #E16259; }
+    .success { color: #37C5AB; }
+    .warning { color: #E9B949; }
+    .info { color: #6BA4E7; }
+    h1 { color: #37C5AB; }
+    .section {
+      margin: 20px 0;
+      padding: 15px;
+      background: #252525;
+      border-radius: 4px;
+    }
+    .section h3 {
+      margin-top: 0;
+      color: #E9B949;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔍 Home Management Database Diagnostic</h1>
+
+  <div class="section">
+    <h3>Instructions</h3>
+    <p>1. First, <strong>log in to the main app</strong> (index.html) in another tab</p>
+    <p>2. Then come back here and click the buttons below to diagnose issues</p>
+    <p>3. The tests will use your logged-in session to check the database</p>
+  </div>
+
+  <div class="section">
+    <h3>Quick Tests</h3>
+    <button id="testAuth">1. Check Authentication</button>
+    <button id="testHousehold">2. Check Household Membership</button>
+    <button id="testRLS">3. Test RLS Policies (Full Test)</button>
+    <button id="clearBtn">Clear Output</button>
+  </div>
+
+  <div id="output">Waiting for you to run a test...</div>
+
+  <script type="module">
+    import { supabase } from './js/auth.js';
+    import { authManager } from './js/auth.js';
+
+    const output = document.getElementById('output');
+
+    function log(message, type = 'info') {
+      const timestamp = new Date().toLocaleTimeString();
+      const colors = {
+        error: 'error',
+        success: 'success',
+        warning: 'warning',
+        info: 'info'
+      };
+      const className = colors[type] || '';
+      output.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span>\n`;
+      console.log(message);
+      output.scrollTop = output.scrollHeight;
+    }
+
+    function clearOutput() {
+      output.innerHTML = '';
+    }
+
+    // Test Authentication
+    async function testAuth() {
+      clearOutput();
+      log('=== AUTHENTICATION TEST ===\n', 'info');
+
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+
+        if (error) {
+          log(`❌ Auth error: ${error.message}`, 'error');
+          log('\n💡 Solution: Refresh the page and log in again', 'warning');
+          return false;
+        }
+
+        if (!session) {
+          log('❌ No active session found', 'error');
+          log('\n💡 Solution:', 'warning');
+          log('   1. Open index.html in another tab', 'warning');
+          log('   2. Log in to the app', 'warning');
+          log('   3. Come back here and try again', 'warning');
+          return false;
+        }
+
+        log('✅ User is authenticated!', 'success');
+        log(`   User ID: ${session.user.id}`);
+        log(`   Email: ${session.user.email}`);
+
+        // Check token expiry
+        const expiresAt = new Date(session.expires_at * 1000);
+        const now = new Date();
+        const timeLeft = Math.floor((expiresAt - now) / 1000 / 60);
+
+        if (timeLeft < 5) {
+          log(`⚠️  Token expires in ${timeLeft} minutes`, 'warning');
+          log('   You may need to refresh soon', 'warning');
+        } else {
+          log(`   Token expires in ${timeLeft} minutes`, 'info');
+        }
+
+        return true;
+      } catch (err) {
+        log(`❌ Exception: ${err.message}`, 'error');
+        return false;
+      }
+    }
+
+    // Test Household Membership
+    async function testHousehold() {
+      clearOutput();
+      log('=== HOUSEHOLD MEMBERSHIP TEST ===\n', 'info');
+
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session) {
+        log('❌ Not authenticated - run Test 1 first', 'error');
+        return false;
+      }
+
+      log('Checking household membership...', 'info');
+
+      try {
+        const { data: memberships, error } = await supabase
+          .from('household_members')
+          .select('*, households(*)')
+          .eq('user_id', session.user.id);
+
+        if (error) {
+          log(`❌ Error checking membership: ${error.message}`, 'error');
+          log(`   Error code: ${error.code}`, 'error');
+
+          if (error.code === 'PGRST116' || error.message.includes('does not exist')) {
+            log('\n💡 Problem: household_members table does not exist', 'warning');
+            log('   Solution: Create tables in Supabase first', 'warning');
+          }
+          return false;
+        }
+
+        if (!memberships || memberships.length === 0) {
+          log('❌ You are not a member of any household!', 'error');
+          log('\n💡 Solution:', 'warning');
+          log('   1. Open the main app (index.html)', 'warning');
+          log('   2. Go to Settings', 'warning');
+          log('   3. Either:', 'warning');
+          log('      - Create a new household, OR', 'warning');
+          log('      - Join an existing household with an invite code', 'warning');
+          return false;
+        }
+
+        log(`✅ Found ${memberships.length} household membership(s)`, 'success');
+
+        memberships.forEach((m, i) => {
+          log(`\n   Household ${i + 1}:`, 'info');
+          log(`   - Name: ${m.households?.name || 'Unknown'}`);
+          log(`   - Role: ${m.role}`);
+          log(`   - Household ID: ${m.household_id}`);
+        });
+
+        return true;
+      } catch (err) {
+        log(`❌ Exception: ${err.message}`, 'error');
+        return false;
+      }
+    }
+
+    // Test RLS Policies
+    async function testRLS() {
+      clearOutput();
+      log('=== FULL RLS POLICY TEST ===\n', 'info');
+      log('This will test SELECT, INSERT, UPDATE, and DELETE permissions\n', 'info');
+
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session) {
+        log('❌ Not authenticated', 'error');
+        log('\n💡 Run Test 1 first', 'warning');
+        return;
+      }
+
+      log(`Authenticated as: ${session.user.email}\n`, 'info');
+
+      // Get household
+      log('Step 1: Checking household membership...', 'info');
+      const { data: membership, error: membershipError } = await supabase
+        .from('household_members')
+        .select('household_id, role')
+        .eq('user_id', session.user.id)
+        .limit(1)
+        .single();
+
+      if (membershipError || !membership) {
+        log(`❌ User is not a member of any household`, 'error');
+        log(`   Error: ${membershipError?.message || 'No membership found'}`, 'error');
+        log('\n💡 Solution: Create or join a household first (see Test 2)', 'warning');
+        return;
+      }
+
+      const householdId = membership.household_id;
+      log(`✅ Found household: ${householdId} (role: ${membership.role})\n`, 'success');
+
+      // Test SELECT
+      log('Step 2: Testing SELECT permission...', 'info');
+      const { data: selectData, error: selectError } = await supabase
+        .from('shopping')
+        .select('*')
+        .limit(1);
+
+      if (selectError) {
+        log(`❌ SELECT: FAILED - ${selectError.message}`, 'error');
+        log(`   Error code: ${selectError.code}`, 'error');
+      } else {
+        log(`✅ SELECT: OK (found ${selectData?.length || 0} items)\n`, 'success');
+      }
+
+      // Test INSERT
+      log('Step 3: Testing INSERT permission...', 'info');
+      const testItem = {
+        household_id: householdId,
+        name: 'RLS_TEST_ITEM_' + Date.now(),
+        notes: 'Created by RLS diagnostic test',
+        completed: false,
+        created_by: session.user.id,
+        created_at: new Date().toISOString()
+      };
+
+      const { data: insertData, error: insertError } = await supabase
+        .from('shopping')
+        .insert(testItem)
+        .select()
+        .single();
+
+      if (insertError) {
+        log(`❌ INSERT: FAILED - ${insertError.message}`, 'error');
+        log(`   Error code: ${insertError.code}`, 'error');
+
+        if (insertError.message.includes('policy') || insertError.code === '42501') {
+          log('\n🔒 RLS POLICY ERROR DETECTED!', 'error');
+          log('\n💡 Solution:', 'warning');
+          log('   1. Go to Supabase Dashboard → SQL Editor', 'warning');
+          log('   2. Open the file: supabase-rls-policies.sql', 'warning');
+          log('   3. Copy the entire contents', 'warning');
+          log('   4. Paste into SQL Editor', 'warning');
+          log('   5. Click Run (or press Cmd/Ctrl + Enter)', 'warning');
+          log('   6. Come back here and run this test again', 'warning');
+        }
+        return;
+      } else {
+        log(`✅ INSERT: OK (created item ${insertData.id})\n`, 'success');
+
+        // Test UPDATE
+        log('Step 4: Testing UPDATE permission...', 'info');
+        const { error: updateError } = await supabase
+          .from('shopping')
+          .update({ notes: 'Updated by RLS test at ' + new Date().toLocaleTimeString() })
+          .eq('id', insertData.id);
+
+        if (updateError) {
+          log(`❌ UPDATE: FAILED - ${updateError.message}`, 'error');
+        } else {
+          log(`✅ UPDATE: OK\n`, 'success');
+        }
+
+        // Test DELETE
+        log('Step 5: Testing DELETE permission...', 'info');
+        const { error: deleteError } = await supabase
+          .from('shopping')
+          .delete()
+          .eq('id', insertData.id);
+
+        if (deleteError) {
+          log(`❌ DELETE: FAILED - ${deleteError.message}`, 'error');
+          log('   (Test item was not cleaned up - you may want to delete it manually)', 'warning');
+        } else {
+          log(`✅ DELETE: OK (test item cleaned up)\n`, 'success');
+        }
+      }
+
+      // Summary
+      log('\n=== TEST SUMMARY ===', 'info');
+      if (!selectError && !insertError) {
+        log('✅ All tests passed! Your database is configured correctly.', 'success');
+        log('\nIf items still aren\'t persisting:', 'info');
+        log('   - Check browser console for errors', 'info');
+        log('   - Try refreshing the main app', 'info');
+        log('   - Check your internet connection', 'info');
+      } else {
+        log('❌ Some tests failed - see errors above for solutions', 'error');
+      }
+    }
+
+    // Event listeners
+    document.getElementById('testAuth').addEventListener('click', testAuth);
+    document.getElementById('testHousehold').addEventListener('click', testHousehold);
+    document.getElementById('testRLS').addEventListener('click', testRLS);
+    document.getElementById('clearBtn').addEventListener('click', clearOutput);
+
+    // Auto-run auth test on load
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        log('Page loaded. Click a button to start testing.\n', 'info');
+      }, 100);
+    });
+  </script>
+</body>
+</html>
