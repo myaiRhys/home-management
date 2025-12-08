@@ -1317,7 +1317,18 @@ class UIManager {
     } else if (action === 'change-sort') {
       const view = target.dataset.view;
       const sortValue = target.value;
-      store.setSortPreference(view, sortValue);
+      const currentSort = store.getSortPreference(view);
+
+      // Toggle between creator and creator-reverse when selecting "Added By"
+      if (sortValue === 'creator') {
+        if (currentSort === 'creator') {
+          store.setSortPreference(view, 'creator-reverse');
+        } else {
+          store.setSortPreference(view, 'creator');
+        }
+      } else {
+        store.setSortPreference(view, sortValue);
+      }
     }
   }
 
@@ -1404,6 +1415,24 @@ class UIManager {
           if (!b.due_date) return -1;
           return new Date(a.due_date) - new Date(b.due_date);
         });
+      case 'creator':
+      case 'creator-reverse':
+        // Group by creator, then sort by created_at within each group
+        const isReverse = sortBy === 'creator-reverse';
+        return sorted.sort((a, b) => {
+          const creatorA = this.getCreatorInitials(a.created_by) || 'Unknown';
+          const creatorB = this.getCreatorInitials(b.created_by) || 'Unknown';
+
+          // Compare creators
+          const creatorCompare = isReverse
+            ? creatorB.localeCompare(creatorA)
+            : creatorA.localeCompare(creatorB);
+
+          if (creatorCompare !== 0) return creatorCompare;
+
+          // Same creator, sort by most recent
+          return new Date(b.created_at) - new Date(a.created_at);
+        });
       default:
         return sorted;
     }
@@ -1415,6 +1444,7 @@ class UIManager {
   renderSortDropdown(view) {
     const currentSort = store.getSortPreference(view);
     const hasDueDate = view === 'tasks' || view === 'clifford' || view === 'personal';
+    const isCreatorSort = currentSort === 'creator' || currentSort === 'creator-reverse';
 
     return `
       <select
@@ -1423,10 +1453,11 @@ class UIManager {
         data-view="${view}"
         style="padding: 0.5rem; border: 1px solid var(--border); border-radius: var(--radius); background-color: var(--card); color: var(--text); font-size: 0.9rem; max-width: 120px;"
       >
-        <option value="recent" ${currentSort === 'recent' ? 'selected' : ''}>Recent</option>
+        <option value="recent" ${currentSort === 'recent' ? 'selected' : ''}>Newest</option>
         <option value="oldest" ${currentSort === 'oldest' ? 'selected' : ''}>Oldest</option>
         <option value="a-z" ${currentSort === 'a-z' ? 'selected' : ''}>A-Z</option>
         <option value="z-a" ${currentSort === 'z-a' ? 'selected' : ''}>Z-A</option>
+        <option value="creator" ${isCreatorSort ? 'selected' : ''}>Added By</option>
         ${hasDueDate ? `<option value="due_date" ${currentSort === 'due_date' ? 'selected' : ''}>Due Date</option>` : ''}
       </select>
     `;
