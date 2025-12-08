@@ -200,6 +200,22 @@
 
       log(`Authenticated as: ${session.user.email}`);
 
+      // First, get the user's household
+      const { data: membership, error: membershipError } = await supabase
+        .from('household_members')
+        .select('household_id')
+        .eq('user_id', session.user.id)
+        .single();
+
+      if (membershipError || !membership) {
+        log(`❌ User is not a member of any household: ${membershipError?.message || 'No membership found'}`, 'error');
+        log('⚠️  You need to create or join a household first!', 'warning');
+        return;
+      }
+
+      const householdId = membership.household_id;
+      log(`✅ Found household membership: ${householdId}`, 'success');
+
       // Test SELECT
       const { data: selectData, error: selectError } = await supabase
         .from('shopping')
@@ -207,13 +223,17 @@
         .limit(1);
       log(selectError ? `❌ SELECT: ${selectError.message}` : `✅ SELECT: OK`, selectError ? 'error' : 'success');
 
-      // Test INSERT (then delete immediately)
+      // Test INSERT (then delete immediately) - INCLUDING household_id
       const testItem = {
+        household_id: householdId,
         name: 'TEST_ITEM_DELETE_ME',
         notes: 'RLS test',
         completed: false,
+        created_by: session.user.id,
         created_at: new Date().toISOString()
       };
+
+      log('Attempting INSERT with household_id: ' + householdId);
 
       const { data: insertData, error: insertError } = await supabase
         .from('shopping')
@@ -223,8 +243,13 @@
 
       if (insertError) {
         log(`❌ INSERT: ${insertError.message}`, 'error');
+        log(`Error code: ${insertError.code}`, 'error');
+        if (insertError.message.includes('policy') || insertError.code === '42501') {
+          log('🔒 INSERT is blocked by RLS policy - check that RLS policies are set up correctly!', 'error');
+          log('Run the supabase-rls-policies.sql script in your Supabase SQL Editor', 'warning');
+        }
       } else {
-        log(`✅ INSERT: OK (created test item)`, 'success');
+        log(`✅ INSERT: OK (created test item with id: ${insertData.id})`, 'success');
 
         // Test UPDATE
         const { error: updateError } = await supabase
@@ -246,6 +271,9 @@
           log(`✅ DELETE: OK`, 'success');
         }
       }
+
+      log('\n--- RLS Test Complete ---');
+      log('If any tests failed, run supabase-rls-policies.sql in your Supabase SQL Editor');
     };
 
     // Auto-run connection test on load

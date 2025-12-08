@@ -220,6 +220,19 @@ window.addEventListener('connection:reconnect', async () => {
   await app.reload();
 });
 
+// Listen for database error events and show toast notifications
+window.addEventListener('db:error', (event) => {
+  const { message, details } = event.detail;
+  console.error('[App] Database error:', message, details);
+  ui.showToast(message, 'error');
+});
+
+// Listen for database success events
+window.addEventListener('db:success', (event) => {
+  const { message } = event.detail;
+  ui.showToast(message, 'success');
+});
+
 // Export for debugging
 window.app = app;
 window.store = store;

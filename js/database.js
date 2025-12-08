@@ -15,6 +15,25 @@ class DatabaseManager {
   }
 
   /**
+   * Dispatch an error event for UI to display
+   */
+  dispatchError(message, details = null) {
+    console.error('[DB] Error:', message, details);
+    window.dispatchEvent(new CustomEvent('db:error', {
+      detail: { message, details }
+    }));
+  }
+
+  /**
+   * Dispatch a success event for UI to display
+   */
+  dispatchSuccess(message) {
+    window.dispatchEvent(new CustomEvent('db:success', {
+      detail: { message }
+    }));
+  }
+
+  /**
    * Execute a database operation with timeout and error handling
    */
   async executeWithTimeout(operation, timeout = DB_OPERATION_TIMEOUT) {
@@ -77,6 +96,17 @@ class DatabaseManager {
     } catch (error) {
       console.error(`[DB] Insert error on ${table}:`, error);
 
+      // Detect and report specific error types
+      if (error.message?.includes('policy') || error.code === '42501') {
+        this.dispatchError('Unable to save - permission denied. Please check your household membership.', error);
+      } else if (error.message?.includes('timeout')) {
+        this.dispatchError('Save timed out - will retry when connection improves', error);
+      } else if (error.message?.includes('JWT') || error.message?.includes('auth')) {
+        this.dispatchError('Session expired - please refresh the page', error);
+      } else if (!navigator.onLine) {
+        this.dispatchError('You are offline - changes will sync when connected', error);
+      }
+
       // Queue for later if appropriate
       if (shouldQueue && this.shouldQueue(error)) {
         queueManager.enqueue({
@@ -112,6 +142,13 @@ class DatabaseManager {
     } catch (error) {
       console.error(`[DB] Update error on ${table}:`, error);
 
+      // Detect and report specific error types
+      if (error.message?.includes('policy') || error.code === '42501') {
+        this.dispatchError('Unable to update - permission denied', error);
+      } else if (error.message?.includes('JWT') || error.message?.includes('auth')) {
+        this.dispatchError('Session expired - please refresh the page', error);
+      }
+
       if (shouldQueue && this.shouldQueue(error)) {
         queueManager.enqueue({
           type: OperationType.UPDATE,
@@ -143,6 +180,13 @@ class DatabaseManager {
 
     } catch (error) {
       console.error(`[DB] Delete error on ${table}:`, error);
+
+      // Detect and report specific error types
+      if (error.message?.includes('policy') || error.code === '42501') {
+        this.dispatchError('Unable to delete - permission denied', error);
+      } else if (error.message?.includes('JWT') || error.message?.includes('auth')) {
+        this.dispatchError('Session expired - please refresh the page', error);
+      }
 
       if (shouldQueue && this.shouldQueue(error)) {
         queueManager.enqueue({
