@@ -559,24 +559,6 @@ class UIManager {
           </div>
         </div>
 
-        ${quickAdd.length > 0 ? `
-          <div class="quick-add-section">
-            <div class="quick-add-label">${this.t('quickAdd')}</div>
-            <div class="quick-add-buttons">
-              ${quickAdd.map(item => `
-                <button
-                  class="quick-add-btn"
-                  data-action="quick-add-item"
-                  data-type="shopping"
-                  data-name="${this.escapeHtml(item.name)}"
-                >
-                  ${this.escapeHtml(item.name)}
-                </button>
-              `).join('')}
-            </div>
-          </div>
-        ` : ''}
-
         <div class="list-section">
           <div class="list-section-header" data-action="toggle-section" data-section="to-buy">
             <h2>${this.t('toBuy')} (${toBuy.length})</h2>
@@ -608,6 +590,24 @@ class UIManager {
             ${purchased.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : purchased.map(item => this.renderShoppingItem(item)).join('')}
           </div>
         </div>
+
+        ${quickAdd.length > 0 ? `
+          <div class="quick-add-section">
+            <div class="quick-add-label">${this.t('quickAdd')}</div>
+            <div class="quick-add-buttons">
+              ${quickAdd.map(item => `
+                <button
+                  class="quick-add-btn"
+                  data-action="quick-add-item"
+                  data-type="shopping"
+                  data-name="${this.escapeHtml(item.name)}"
+                >
+                  ${this.escapeHtml(item.name)}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
 
         <div id="add-form-container"></div>
       </div>
@@ -688,24 +688,6 @@ class UIManager {
           </button>
         </div>
 
-        ${quickAdd.length > 0 ? `
-          <div class="quick-add-section">
-            <div class="quick-add-label">${this.t('quickAdd')}</div>
-            <div class="quick-add-buttons">
-              ${quickAdd.map(item => `
-                <button
-                  class="quick-add-btn"
-                  data-action="quick-add-item"
-                  data-type="tasks"
-                  data-name="${this.escapeHtml(item.name)}"
-                >
-                  ${this.escapeHtml(item.name)}
-                </button>
-              `).join('')}
-            </div>
-          </div>
-        ` : ''}
-
         <div class="list-section">
           <div class="list-section-header" data-action="toggle-section" data-section="active-${type}">
             <h2>${this.t('active')} (${active.length})</h2>
@@ -738,6 +720,24 @@ class UIManager {
           </div>
         </div>
 
+        ${quickAdd.length > 0 ? `
+          <div class="quick-add-section">
+            <div class="quick-add-label">${this.t('quickAdd')}</div>
+            <div class="quick-add-buttons">
+              ${quickAdd.map(item => `
+                <button
+                  class="quick-add-btn"
+                  data-action="quick-add-item"
+                  data-type="tasks"
+                  data-name="${this.escapeHtml(item.name)}"
+                >
+                  ${this.escapeHtml(item.name)}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+
         <div id="add-form-container"></div>
       </div>
     `;
@@ -762,24 +762,6 @@ class UIManager {
             <button class="btn btn-icon" data-action="show-add-form" data-type="clifford">+</button>
           </div>
         </div>
-
-        ${quickAdd.length > 0 ? `
-          <div class="quick-add-section">
-            <div class="quick-add-label">${this.t('quickAdd')}</div>
-            <div class="quick-add-buttons">
-              ${quickAdd.map(item => `
-                <button
-                  class="quick-add-btn"
-                  data-action="quick-add-item"
-                  data-type="clifford"
-                  data-name="${this.escapeHtml(item.name)}"
-                >
-                  ${this.escapeHtml(item.name)}
-                </button>
-              `).join('')}
-            </div>
-          </div>
-        ` : ''}
 
         <div class="list-section">
           <div class="list-section-header" data-action="toggle-section" data-section="active-clifford">
@@ -812,6 +794,24 @@ class UIManager {
             ${completed.length === 0 ? `<p class="empty-message">${this.t('noItems')}</p>` : completed.map(item => this.renderTaskItem(item, false, 'clifford')).join('')}
           </div>
         </div>
+
+        ${quickAdd.length > 0 ? `
+          <div class="quick-add-section">
+            <div class="quick-add-label">${this.t('quickAdd')}</div>
+            <div class="quick-add-buttons">
+              ${quickAdd.map(item => `
+                <button
+                  class="quick-add-btn"
+                  data-action="quick-add-item"
+                  data-type="clifford"
+                  data-name="${this.escapeHtml(item.name)}"
+                >
+                  ${this.escapeHtml(item.name)}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
 
         <div id="add-form-container"></div>
       </div>
