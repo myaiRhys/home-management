@@ -10,9 +10,14 @@ class RealtimeManager {
   constructor() {
     this.channels = new Map();
     this.reconnectTimeouts = new Map();
+    this.isReconnecting = false;
 
-    // Listen for reconnection events
-    window.addEventListener('connection:reconnect', () => this.reconnectAll());
+    // Listen for reconnection events - use a delayed reconnect to allow auth to refresh first
+    window.addEventListener('connection:reconnect', () => {
+      // Delay realtime reconnect to ensure auth session is refreshed first
+      // This fixes the race condition where realtime tries to reconnect before auth is ready
+      setTimeout(() => this.reconnectAll(), 500);
+    });
   }
 
   /**
@@ -98,18 +103,32 @@ class RealtimeManager {
    * Reconnect all subscriptions
    */
   async reconnectAll() {
+    // Prevent multiple simultaneous reconnect attempts
+    if (this.isReconnecting) {
+      console.log('[Realtime] Already reconnecting, skipping...');
+      return;
+    }
+
+    this.isReconnecting = true;
     console.log('[Realtime] Reconnecting all subscriptions...');
 
-    // Unsubscribe from all
-    await this.unsubscribeAll();
+    try {
+      // Unsubscribe from all
+      await this.unsubscribeAll();
 
-    // Wait a moment
-    await new Promise(resolve => setTimeout(resolve, RECONNECT_DELAY));
+      // Wait a moment for cleanup
+      await new Promise(resolve => setTimeout(resolve, RECONNECT_DELAY));
 
-    // Resubscribe based on current household
-    const household = authManager.getCurrentHousehold();
-    if (household) {
-      this.subscribeToHousehold(household.id);
+      // Resubscribe based on current household
+      const household = authManager.getCurrentHousehold();
+      if (household) {
+        console.log('[Realtime] Resubscribing to household:', household.id);
+        this.subscribeToHousehold(household.id);
+      } else {
+        console.warn('[Realtime] No household found, cannot subscribe to realtime updates');
+      }
+    } finally {
+      this.isReconnecting = false;
     }
   }
 
@@ -268,6 +287,13 @@ class RealtimeManager {
           if (!items.find(item => item.id === newRecord.id)) {
             store.setQuickAdd(type, [...items, newRecord]);
           }
+          break;
+
+        case 'UPDATE':
+          store.setQuickAdd(
+            type,
+            items.map(item => item.id === newRecord.id ? newRecord : item)
+          );
           break;
 
         case 'DELETE':
