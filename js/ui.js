@@ -1638,18 +1638,26 @@ class UIManager {
 
     // Update the item (this may trigger a re-render)
     console.log('[submitEditForm] Updating item...');
+    let result;
+
     if (type === 'shopping') {
-      await db.updateShoppingItem(id, updates);
+      result = await db.updateShoppingItem(id, updates);
     } else if (type === 'tasks') {
-      await db.updateTask(id, updates);
+      result = await db.updateTask(id, updates);
     } else if (type === 'clifford') {
-      await db.updateClifford(id, updates);
+      result = await db.updateClifford(id, updates);
     } else if (type === 'personal') {
-      await db.updatePersonalTask(id, updates);
+      result = await db.updatePersonalTask(id, updates);
     }
 
-    console.log('[submitEditForm] Item updated successfully');
-    this.showToast(`${name} updated!`, 'success');
+    // Show appropriate message based on result
+    if (result && result.error) {
+      console.error('[submitEditForm] Update failed:', result.error);
+      this.showToast(`Failed to update ${name}. Please try again.`, 'error');
+    } else {
+      console.log('[submitEditForm] Item updated successfully');
+      this.showToast(`${name} updated!`, 'success');
+    }
   }
 
   /**
