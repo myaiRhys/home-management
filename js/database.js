@@ -809,11 +809,22 @@ class DatabaseManager {
       created_at: new Date().toISOString()
     };
 
+    // Optimistic update
+    const tempId = `temp_${Date.now()}`;
+    const tempItem = { ...item, id: tempId };
+    store.setPersonalTasks([tempItem, ...store.getPersonalTasks()]);
+
     const { data, error } = await this.insert(Tables.PERSONAL_TASKS, item);
 
-    if (!error && data) {
+    if (data) {
+      // Replace temp item with real one
       const current = store.getPersonalTasks();
-      store.setPersonalTasks([...current, data]);
+      store.setPersonalTasks([data, ...current.filter(t => t.id !== tempId)]);
+    } else if (error) {
+      // Mark temp item as pending on error
+      const current = store.getPersonalTasks();
+      const updated = current.map(t => t.id === tempId ? { ...t, pending: true } : t);
+      store.setPersonalTasks(updated);
     }
 
     return { data, error };
