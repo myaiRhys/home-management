@@ -48,6 +48,145 @@
   --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
+/* High Contrast Theme - Optimized for red-green color blindness */
+/* Uses blue/orange palette which is distinguishable for protanopia/deuteranopia */
+[data-theme="high-contrast"] {
+  --primary: #0077BB;
+  --primary-dark: #005588;
+  --secondary: #33BBEE;
+  --accent: #0077BB;
+  --warning: #EE7733;
+  --danger: #CC3311;
+  --success: #0077BB;
+  --bg: #1A1A1A;
+  --card: #2A2A2A;
+  --text: #FFFFFF;
+  --text-light: #CCCCCC;
+  --border: #555555;
+  --border-light: #666666;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* Colorblind-friendly overrides - use distinct blue/orange/patterns */
+[data-theme="high-contrast"] .connection-indicator.offline {
+  background-color: #CC3311;
+  color: #FFFFFF;
+  font-weight: 700;
+}
+
+[data-theme="high-contrast"] .connection-indicator.syncing {
+  background-color: #EE7733;
+  color: #000000;
+  font-weight: 700;
+}
+
+[data-theme="high-contrast"] .connection-indicator.online {
+  background-color: #0077BB;
+  color: #FFFFFF;
+  opacity: 1;
+}
+
+/* Badges use distinct colors + patterns for extra clarity */
+[data-theme="high-contrast"] .badge-danger {
+  background-color: #CC3311;
+  color: #FFFFFF;
+  border: 2px solid #CC3311;
+  font-weight: 700;
+}
+
+[data-theme="high-contrast"] .badge-warning {
+  background-color: #EE7733;
+  color: #000000;
+  border: 2px solid #EE7733;
+  font-weight: 700;
+}
+
+[data-theme="high-contrast"] .badge-info {
+  background-color: #33BBEE;
+  color: #000000;
+  border: 2px solid #33BBEE;
+}
+
+[data-theme="high-contrast"] .toast-success {
+  background-color: #0077BB;
+  color: #FFFFFF;
+  border: 2px solid #0077BB;
+}
+
+[data-theme="high-contrast"] .toast-error {
+  background-color: #CC3311;
+  color: #FFFFFF;
+  border: 2px solid #CC3311;
+  font-weight: 700;
+}
+
+[data-theme="high-contrast"] .toast-info {
+  background-color: #33BBEE;
+  color: #000000;
+  border: 2px solid #33BBEE;
+}
+
+[data-theme="high-contrast"] .list-item.pending {
+  border-left: 4px solid #EE7733;
+}
+
+[data-theme="high-contrast"] .list-item.completed {
+  opacity: 0.6;
+  border-left: 4px solid #666666;
+}
+
+[data-theme="high-contrast"] .btn-primary {
+  background-color: #0077BB;
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+[data-theme="high-contrast"] .btn-primary:active {
+  background-color: #005588;
+}
+
+[data-theme="high-contrast"] .btn-danger {
+  background-color: #CC3311;
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+[data-theme="high-contrast"] .drawer-btn.active {
+  background-color: #0077BB;
+  color: #FFFFFF;
+  border-color: #0077BB;
+  font-weight: 600;
+}
+
+[data-theme="high-contrast"] .nav-tab.active {
+  color: #33BBEE;
+}
+
+[data-theme="high-contrast"] .creator-initials {
+  background-color: #0077BB;
+  color: #FFFFFF;
+  font-weight: 700;
+}
+
+[data-theme="high-contrast"] .quick-add-btn:active {
+  background-color: #0077BB;
+  color: #FFFFFF;
+}
+
+[data-theme="high-contrast"] .item-checkbox {
+  accent-color: #0077BB;
+}
+
+[data-theme="high-contrast"] .spinner {
+  border-color: #555555;
+  border-top-color: #0077BB;
+}
+
+[data-theme="high-contrast"] .card-count {
+  color: #33BBEE;
+}
+
 /* ===========================
    Reset & Base Styles
    =========================== */
