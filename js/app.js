@@ -126,6 +126,31 @@ class App {
   }
 
   /**
+   * Switch to a new household (called after joining/creating)
+   * Loads data and sets up realtime subscriptions
+   */
+  async switchHousehold(householdId) {
+    console.log('[App] Switching to household:', householdId);
+
+    try {
+      // Reconnect realtime subscriptions for the new household
+      // This unsubscribes from old channels and subscribes to new ones
+      await realtimeManager.reconnectAll();
+
+      // Load all data for the new household
+      await this.loadData(householdId);
+
+      // Process any queued operations
+      queueManager.processQueue();
+
+      console.log('[App] Switched to household successfully');
+    } catch (error) {
+      console.error('[App] Error switching household:', error);
+      ui.showToast('Error loading household data', 'error');
+    }
+  }
+
+  /**
    * Setup pull-to-refresh functionality
    */
   setupPullToRefresh() {

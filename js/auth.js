@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, STORAGE_KEYS } from './config.js';
 import { store } from './store.js';
 import { connectionManager } from './connection.js';
 
@@ -104,7 +104,16 @@ class AuthManager {
         .single();
 
       if (error) {
-        console.error('[Auth] Error loading household:', error);
+        // PGRST116 = no rows returned (user not in any household)
+        if (error.code === 'PGRST116') {
+          console.log('[Auth] User not in any household, clearing stale data');
+          store.setHousehold(null);
+          localStorage.removeItem(STORAGE_KEYS.HOUSEHOLD);
+        } else {
+          // For other errors (network, etc.), log but don't clear
+          // to allow offline use with cached data
+          console.error('[Auth] Error loading household:', error);
+        }
         return;
       }
 
@@ -114,6 +123,11 @@ class AuthManager {
           ...membership.households,
           userRole: membership.role
         });
+      } else {
+        // Membership exists but household join failed (shouldn't happen normally)
+        console.warn('[Auth] Membership found but household data missing, clearing stale data');
+        store.setHousehold(null);
+        localStorage.removeItem(STORAGE_KEYS.HOUSEHOLD);
       }
 
     } catch (error) {
