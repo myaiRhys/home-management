@@ -80,7 +80,11 @@ const translations = {
     addQuickAdd: 'Add Quick Add',
     noQuickAddItems: 'No quick add items yet',
     quickAddItemAdded: 'Quick add item added!',
-    quickAddItemDeleted: 'Quick add item deleted!'
+    quickAddItemDeleted: 'Quick add item deleted!',
+    pullToRefresh: 'Pull to refresh',
+    releaseToRefresh: 'Release to refresh',
+    refreshing: 'Refreshing...',
+    refreshDone: 'Done!'
   },
   af: {
     appName: 'Thibault',
@@ -156,7 +160,11 @@ const translations = {
     addQuickAdd: 'Voeg Vinnig Byvoeg By',
     noQuickAddItems: 'Nog geen vinnig byvoeg items nie',
     quickAddItemAdded: 'Vinnig byvoeg item bygevoeg!',
-    quickAddItemDeleted: 'Vinnig byvoeg item verwyder!'
+    quickAddItemDeleted: 'Vinnig byvoeg item verwyder!',
+    pullToRefresh: 'Trek om te verfris',
+    releaseToRefresh: 'Laat los om te verfris',
+    refreshing: 'Verfris...',
+    refreshDone: 'Klaar!'
   }
 };
 
@@ -390,7 +398,8 @@ class UIManager {
         <div class="connection-indicator" id="connection-indicator"></div>
         <div class="app-content" id="app-content">
           <div class="pull-to-refresh-indicator" id="pull-indicator">
-            <div class="spinner"></div>
+            <div class="pull-icon">↓</div>
+            <div class="pull-text" id="pull-text">${this.t('pullToRefresh')}</div>
           </div>
           ${this.renderView(view)}
         </div>
