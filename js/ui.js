@@ -51,6 +51,7 @@ const translations = {
     dark: 'Dark',
     light: 'Light',
     grey: 'Grey',
+    highContrast: 'Colorblind',
     online: 'Online',
     offline: 'Offline',
     syncing: 'Syncing...',
@@ -126,6 +127,7 @@ const translations = {
     dark: 'Donker',
     light: 'Lig',
     grey: 'Grys',
+    highContrast: 'Kleurblind',
     online: 'Aanlyn',
     offline: 'Vanlyn',
     syncing: 'Sinkroniseer...',
@@ -997,6 +999,7 @@ class UIManager {
               <option value="dark" ${theme === 'dark' ? 'selected' : ''}>${this.t('dark')}</option>
               <option value="grey" ${theme === 'grey' ? 'selected' : ''}>${this.t('grey')}</option>
               <option value="light" ${theme === 'light' ? 'selected' : ''}>${this.t('light')}</option>
+              <option value="high-contrast" ${theme === 'high-contrast' ? 'selected' : ''}>${this.t('highContrast')}</option>
             </select>
           </div>
 
