@@ -940,7 +940,7 @@ p {
 
 /* Dark mode media query support */
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
+  :root:not([data-theme]) {
     --primary: #2EAADC;
     --primary-dark: #2590C0;
     --bg: #FFFFFF;
