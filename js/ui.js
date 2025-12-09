@@ -1404,10 +1404,6 @@ class UIManager {
         return sorted.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       case 'oldest':
         return sorted.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-      case 'a-z':
-        return sorted.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
-      case 'z-a':
-        return sorted.sort((a, b) => b.name.toLowerCase().localeCompare(a.name.toLowerCase()));
       case 'due_date':
         return sorted.sort((a, b) => {
           if (!a.due_date && !b.due_date) return 0;
@@ -1455,8 +1451,6 @@ class UIManager {
       >
         <option value="recent" ${currentSort === 'recent' ? 'selected' : ''}>Newest</option>
         <option value="oldest" ${currentSort === 'oldest' ? 'selected' : ''}>Oldest</option>
-        <option value="a-z" ${currentSort === 'a-z' ? 'selected' : ''}>A-Z</option>
-        <option value="z-a" ${currentSort === 'z-a' ? 'selected' : ''}>Z-A</option>
         <option value="creator" ${isCreatorSort ? 'selected' : ''}>Added By</option>
         ${hasDueDate ? `<option value="due_date" ${currentSort === 'due_date' ? 'selected' : ''}>Due Date</option>` : ''}
       </select>
