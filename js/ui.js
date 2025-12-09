@@ -50,6 +50,7 @@ const translations = {
     language: 'Language',
     dark: 'Dark',
     light: 'Light',
+    grey: 'Grey',
     online: 'Online',
     offline: 'Offline',
     syncing: 'Syncing...',
@@ -124,6 +125,7 @@ const translations = {
     language: 'Taal',
     dark: 'Donker',
     light: 'Lig',
+    grey: 'Grys',
     online: 'Aanlyn',
     offline: 'Vanlyn',
     syncing: 'Sinkroniseer...',
@@ -993,6 +995,7 @@ class UIManager {
             <label>${this.t('theme')}</label>
             <select id="theme-select" data-action="change-theme">
               <option value="dark" ${theme === 'dark' ? 'selected' : ''}>${this.t('dark')}</option>
+              <option value="grey" ${theme === 'grey' ? 'selected' : ''}>${this.t('grey')}</option>
               <option value="light" ${theme === 'light' ? 'selected' : ''}>${this.t('light')}</option>
             </select>
           </div>

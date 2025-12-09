@@ -35,6 +35,19 @@
   --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
+[data-theme="grey"] {
+  --primary: #37C5AB;
+  --primary-dark: #2EA58E;
+  --bg: #E5E5E3;
+  --card: #F2F2F0;
+  --text: #2D2D2D;
+  --text-light: #6B6B6B;
+  --border: #C8C8C6;
+  --border-light: #D4D4D2;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
 /* ===========================
    Reset & Base Styles
    =========================== */
