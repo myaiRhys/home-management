@@ -17,7 +17,9 @@ class App {
       startY: 0,
       currentY: 0,
       isDragging: false,
-      threshold: 80
+      isRefreshing: false,
+      threshold: 60,
+      maxPull: 120
     };
   }
 
@@ -158,63 +160,119 @@ class App {
 
     const appContent = document.getElementById('app-content');
     const indicator = document.getElementById('pull-indicator');
+    const pullText = document.getElementById('pull-text');
 
-    if (!appContent || !indicator) {
+    if (!appContent || !indicator || !pullText) {
       console.log('[App] Pull-to-refresh elements not found, retrying in 100ms');
       setTimeout(() => this.setupPullToRefresh(), 100);
       return;
     }
 
+    const updateIndicatorState = (state, text) => {
+      indicator.classList.remove('pulling', 'ready', 'refreshing');
+      if (state) {
+        indicator.classList.add(state);
+      }
+      if (text) {
+        pullText.textContent = text;
+      }
+    };
+
     // Touch start
     appContent.addEventListener('touchstart', (e) => {
-      // Only trigger if scrolled to top
-      if (appContent.scrollTop === 0) {
+      // Don't trigger if already refreshing or not at top
+      if (this.pullToRefresh.isRefreshing) return;
+      if (appContent.scrollTop <= 0) {
         this.pullToRefresh.startY = e.touches[0].clientY;
         this.pullToRefresh.isDragging = true;
       }
-    });
+    }, { passive: true });
 
     // Touch move
     appContent.addEventListener('touchmove', (e) => {
-      if (!this.pullToRefresh.isDragging) return;
+      if (!this.pullToRefresh.isDragging || this.pullToRefresh.isRefreshing) return;
 
       this.pullToRefresh.currentY = e.touches[0].clientY;
       const pullDistance = this.pullToRefresh.currentY - this.pullToRefresh.startY;
 
-      // Show indicator when pulling down
-      if (pullDistance > 0 && appContent.scrollTop === 0) {
-        indicator.classList.add('visible');
+      // Only show indicator when pulling down from top
+      if (pullDistance > 10 && appContent.scrollTop <= 0) {
+        const progress = Math.min(pullDistance / this.pullToRefresh.maxPull, 1);
+
+        if (pullDistance >= this.pullToRefresh.threshold) {
+          updateIndicatorState('ready', ui.t('releaseToRefresh'));
+        } else {
+          updateIndicatorState('pulling', ui.t('pullToRefresh'));
+        }
+
+        // Apply transform based on pull distance
+        indicator.style.transform = `translateX(-50%) translateY(${Math.min(pullDistance * 0.5, 40)}px)`;
+        indicator.style.opacity = Math.min(progress * 1.5, 1);
       } else {
-        indicator.classList.remove('visible');
+        updateIndicatorState(null);
+        indicator.style.transform = '';
+        indicator.style.opacity = '';
       }
-    });
+    }, { passive: true });
 
     // Touch end
-    appContent.addEventListener('touchend', async (e) => {
-      if (!this.pullToRefresh.isDragging) return;
+    appContent.addEventListener('touchend', async () => {
+      if (!this.pullToRefresh.isDragging || this.pullToRefresh.isRefreshing) return;
 
       const pullDistance = this.pullToRefresh.currentY - this.pullToRefresh.startY;
 
       // Trigger refresh if pulled beyond threshold
-      if (pullDistance > this.pullToRefresh.threshold && appContent.scrollTop === 0) {
+      if (pullDistance >= this.pullToRefresh.threshold && appContent.scrollTop <= 0) {
         console.log('[App] Pull-to-refresh triggered');
+
+        // Set refreshing state
+        this.pullToRefresh.isRefreshing = true;
+        updateIndicatorState('refreshing', ui.t('refreshing'));
+        indicator.style.transform = 'translateX(-50%) translateY(20px)';
+        indicator.style.opacity = '1';
 
         // Vibrate if supported
         if (navigator.vibrate) {
           navigator.vibrate(50);
         }
 
-        // Refresh data
-        await authManager.refreshSession();
-        await queueManager.processQueue();
-        await this.reload();
+        try {
+          // Full refresh: session, realtime, queue, and data
+          await authManager.refreshSession();
+          await realtimeManager.reconnectAll();
+          await queueManager.processQueue();
+          await this.reload();
+
+          updateIndicatorState('refreshing', ui.t('refreshDone'));
+
+          // Brief delay to show success
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (error) {
+          console.error('[App] Pull-to-refresh error:', error);
+          ui.showToast('Refresh failed', 'error');
+        }
       }
 
       // Reset
       this.pullToRefresh.isDragging = false;
+      this.pullToRefresh.isRefreshing = false;
       this.pullToRefresh.startY = 0;
       this.pullToRefresh.currentY = 0;
-      indicator.classList.remove('visible');
+      updateIndicatorState(null, ui.t('pullToRefresh'));
+      indicator.style.transform = '';
+      indicator.style.opacity = '';
+    });
+
+    // Touch cancel
+    appContent.addEventListener('touchcancel', () => {
+      if (this.pullToRefresh.isRefreshing) return;
+
+      this.pullToRefresh.isDragging = false;
+      this.pullToRefresh.startY = 0;
+      this.pullToRefresh.currentY = 0;
+      updateIndicatorState(null, ui.t('pullToRefresh'));
+      indicator.style.transform = '';
+      indicator.style.opacity = '';
     });
 
     console.log('[App] Pull-to-refresh setup complete');
