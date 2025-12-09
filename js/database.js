@@ -831,14 +831,23 @@ class DatabaseManager {
   }
 
   async updatePersonalTask(id, updates) {
-    const { data, error} = await this.update(Tables.PERSONAL_TASKS, id, {
+    // Optimistic update
+    const current = store.getPersonalTasks();
+    const optimistic = current.map(item =>
+      item.id === id ? { ...item, ...updates } : item
+    );
+    store.setPersonalTasks(optimistic);
+
+    const { data, error } = await this.update(Tables.PERSONAL_TASKS, id, {
       ...updates,
       updated_at: new Date().toISOString()
     });
 
-    if (!error && data) {
-      const current = store.getPersonalTasks();
-      const updated = current.map(item => item.id === id ? { ...item, ...data } : item);
+    if (error) {
+      // Mark as pending on error
+      const updated = store.getPersonalTasks().map(item =>
+        item.id === id ? { ...item, pending: true } : item
+      );
       store.setPersonalTasks(updated);
     }
 
