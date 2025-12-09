@@ -12,11 +12,16 @@ class RealtimeManager {
     this.reconnectTimeouts = new Map();
     this.isReconnecting = false;
 
-    // Listen for reconnection events - use a delayed reconnect to allow auth to refresh first
-    window.addEventListener('connection:reconnect', () => {
-      // Delay realtime reconnect to ensure auth session is refreshed first
-      // This fixes the race condition where realtime tries to reconnect before auth is ready
-      setTimeout(() => this.reconnectAll(), 500);
+    // Listen for reconnection events - wait for auth to refresh first
+    window.addEventListener('connection:reconnect', async () => {
+      // Wait for auth session to refresh before reconnecting realtime
+      // This prevents race condition where realtime tries to connect with expired token
+      const refreshPromise = authManager.getRefreshPromise();
+      if (refreshPromise) {
+        console.log('[Realtime] Waiting for auth refresh to complete...');
+        await refreshPromise;
+      }
+      this.reconnectAll();
     });
   }
 
@@ -116,8 +121,8 @@ class RealtimeManager {
       // Unsubscribe from all
       await this.unsubscribeAll();
 
-      // Wait a moment for cleanup
-      await new Promise(resolve => setTimeout(resolve, RECONNECT_DELAY));
+      // Brief wait for channel cleanup (reduced from 1000ms to 100ms)
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Resubscribe based on current household
       const household = authManager.getCurrentHousehold();

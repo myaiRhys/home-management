@@ -8,7 +8,7 @@ export const APP_VERSION = '2.0.0';
 export const INVITE_CODE_LENGTH = 6;
 
 // Connection timeouts
-export const DB_OPERATION_TIMEOUT = 30000; // 30 seconds
+export const DB_OPERATION_TIMEOUT = 10000; // 10 seconds (reduced from 30s for better UX)
 export const RECONNECT_DELAY = 1000; // 1 second
 export const MAX_RETRY_ATTEMPTS = 3;
 

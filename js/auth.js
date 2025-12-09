@@ -20,6 +20,7 @@ class AuthManager {
   constructor() {
     this.initialized = false;
     this.sessionRefreshTimeout = null;
+    this.refreshPromise = null; // Track ongoing refresh operations
 
     // Listen for reconnection events to refresh session
     window.addEventListener('connection:reconnect', () => this.refreshSession());
@@ -131,29 +132,45 @@ class AuthManager {
 
   /**
    * Refresh session (critical for iOS backgrounding)
+   * Returns a promise that resolves when refresh is complete
    */
   async refreshSession() {
+    // If already refreshing, return the existing promise
+    if (this.refreshPromise) {
+      console.log('[Auth] Refresh already in progress, waiting...');
+      return this.refreshPromise;
+    }
+
     console.log('[Auth] Refreshing session...');
 
-    try {
-      const { data: { session }, error } = await supabase.auth.refreshSession();
+    // Create and store the refresh promise
+    this.refreshPromise = (async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.refreshSession();
 
-      if (error) {
-        console.error('[Auth] Session refresh error:', error);
+        if (error) {
+          console.error('[Auth] Session refresh error:', error);
+          return { data: null, error };
+        }
+
+        if (session) {
+          console.log('[Auth] Session refreshed successfully');
+          await this.handleSession(session);
+        }
+
+        return { data: session, error: null };
+
+      } catch (error) {
+        console.error('[Auth] Session refresh failed:', error);
         return { data: null, error };
+      } finally {
+        // Clear the promise and dispatch completion event
+        this.refreshPromise = null;
+        window.dispatchEvent(new CustomEvent('auth:refreshed'));
       }
+    })();
 
-      if (session) {
-        console.log('[Auth] Session refreshed successfully');
-        await this.handleSession(session);
-      }
-
-      return { data: session, error: null };
-
-    } catch (error) {
-      console.error('[Auth] Session refresh failed:', error);
-      return { data: null, error };
-    }
+    return this.refreshPromise;
   }
 
   /**
@@ -233,6 +250,14 @@ class AuthManager {
    */
   getCurrentHousehold() {
     return store.getHousehold();
+  }
+
+  /**
+   * Get the current refresh promise (if any)
+   * Used by realtime manager to coordinate reconnection
+   */
+  getRefreshPromise() {
+    return this.refreshPromise;
   }
 }
 
