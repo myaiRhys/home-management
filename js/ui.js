@@ -2213,11 +2213,14 @@ class UIManager {
 
     store.setLoading(true);
     const { data, error } = await db.createHousehold(name);
-    store.setLoading(false);
 
     if (error) {
+      store.setLoading(false);
       this.showToast(error.message, 'error');
     } else {
+      // Load data and set up subscriptions for the new household
+      await window.app.switchHousehold(data.id);
+      store.setLoading(false);
       this.showToast(`Household "${name}" created!`, 'success');
     }
   }
@@ -2230,11 +2233,14 @@ class UIManager {
 
     store.setLoading(true);
     const { data, error } = await db.joinHousehold(code);
-    store.setLoading(false);
 
     if (error) {
+      store.setLoading(false);
       this.showToast(error.message, 'error');
     } else {
+      // Load data and set up subscriptions for the new household
+      await window.app.switchHousehold(data.id);
+      store.setLoading(false);
       this.showToast(`Joined ${data.name}!`, 'success');
     }
   }
