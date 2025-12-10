@@ -91,6 +91,15 @@ class DatabaseManager {
         return inserted;
       });
 
+      // IDEMPOTENCY FIX: Mark this insert as successfully processed
+      // This prevents the operation from being queued again if a network error
+      // occurred after the insert succeeded but before we received the response
+      queueManager.markAsProcessed({
+        type: OperationType.INSERT,
+        table,
+        data
+      });
+
       return { data: result, error: null };
 
     } catch (error) {
@@ -125,10 +134,16 @@ class DatabaseManager {
    */
   async update(table, id, data, shouldQueue = true) {
     try {
+      // SYNC FIX: Always set updated_at for conflict resolution
+      const updateData = {
+        ...data,
+        updated_at: new Date().toISOString()
+      };
+
       const result = await this.executeWithTimeout(async () => {
         const { data: updated, error } = await supabase
           .from(table)
-          .update(data)
+          .update(updateData)
           .eq('id', id)
           .select()
           .single();

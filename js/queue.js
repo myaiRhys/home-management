@@ -11,11 +11,65 @@ class QueueManager {
     this.processing = false;
     this.listeners = new Set();
 
+    // IDEMPOTENCY FIX: Track recently processed operations to prevent duplicates
+    // Maps idempotency key -> timestamp of successful execution
+    this.processedOperations = new Map();
+    this.IDEMPOTENCY_TTL = 60000; // 60 seconds - how long to remember processed operations
+
     // Load queue from localStorage
     this.loadQueue();
 
     // Listen for reconnection events
     window.addEventListener('connection:reconnect', () => this.processQueue());
+
+    // Clean up old idempotency records periodically
+    setInterval(() => this.cleanupIdempotencyRecords(), 30000);
+  }
+
+  /**
+   * Generate an idempotency key for an operation
+   * This identifies unique operations to prevent duplicates
+   */
+  generateIdempotencyKey(operation) {
+    const { type, table, data } = operation;
+    // For INSERTs, use a hash of the content (name + household_id + type)
+    if (type === OperationType.INSERT) {
+      return `${type}_${table}_${data.name || ''}_${data.household_id || data.user_id || ''}_${data.type || ''}`;
+    }
+    // For UPDATEs and DELETEs, use the record ID
+    return `${type}_${table}_${data.id || ''}`;
+  }
+
+  /**
+   * Check if an operation was recently processed (idempotency check)
+   */
+  wasRecentlyProcessed(operation) {
+    const key = this.generateIdempotencyKey(operation);
+    const processedAt = this.processedOperations.get(key);
+    if (processedAt && Date.now() - processedAt < this.IDEMPOTENCY_TTL) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Mark an operation as processed (for idempotency)
+   */
+  markAsProcessed(operation) {
+    const key = this.generateIdempotencyKey(operation);
+    this.processedOperations.set(key, Date.now());
+  }
+
+  /**
+   * Clean up old idempotency records
+   */
+  cleanupIdempotencyRecords() {
+    const now = Date.now();
+    for (const [key, timestamp] of this.processedOperations) {
+      if (now - timestamp > this.IDEMPOTENCY_TTL) {
+        this.processedOperations.delete(key);
+      }
+    }
   }
 
   /**
@@ -49,9 +103,26 @@ class QueueManager {
    * Add operation to queue
    */
   enqueue(operation) {
+    // IDEMPOTENCY FIX: Check if this operation was recently processed successfully
+    if (this.wasRecentlyProcessed(operation)) {
+      console.log(`[Queue] Skipping duplicate operation (recently processed):`, operation.type, operation.table);
+      return null;
+    }
+
+    // IDEMPOTENCY FIX: Check if a similar operation is already in the queue
+    const idempotencyKey = this.generateIdempotencyKey(operation);
+    const existingInQueue = this.queue.find(item =>
+      this.generateIdempotencyKey(item) === idempotencyKey
+    );
+    if (existingInQueue) {
+      console.log(`[Queue] Skipping duplicate operation (already queued):`, operation.type, operation.table);
+      return existingInQueue.id;
+    }
+
     const queueItem = {
       id: this.generateId(),
       timestamp: Date.now(),
+      idempotencyKey,
       ...operation
     };
 
@@ -135,11 +206,21 @@ class QueueManager {
       const operation = this.queue[0];
 
       try {
+        // IDEMPOTENCY FIX: Skip if this operation was already processed
+        if (this.wasRecentlyProcessed(operation)) {
+          console.log(`[Queue] Skipping already-processed operation:`, operation.id);
+          this.dequeue(operation.id);
+          continue;
+        }
+
         console.log(`[Queue] Processing ${operation.type} on ${operation.table}`);
 
         // Execute the operation (this will be set by the database module)
         if (this.executeOperation) {
-          await this.executeOperation(operation);
+          const result = await this.executeOperation(operation);
+
+          // IDEMPOTENCY FIX: Mark as successfully processed
+          this.markAsProcessed(operation);
         }
 
         // Success - remove from queue
@@ -152,6 +233,14 @@ class QueueManager {
         if (error.message?.includes('auth') || !navigator.onLine) {
           console.log('[Queue] Stopping queue processing due to error');
           break;
+        }
+
+        // Check for duplicate key error (item already exists)
+        if (error.code === '23505' || error.message?.includes('duplicate')) {
+          console.log('[Queue] Duplicate detected, marking as processed and removing');
+          this.markAsProcessed(operation);
+          this.dequeue(operation.id);
+          continue;
         }
 
         // Otherwise, remove the failed operation and continue
