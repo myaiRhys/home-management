@@ -57,8 +57,15 @@ class AuthManager {
       supabase.auth.onAuthStateChange(async (event, session) => {
         console.log('[Auth] State change:', event);
 
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        if (event === 'SIGNED_IN') {
+          // Full session handling for new sign-ins
           await this.handleSession(session);
+          connectionManager.setConnected();
+        } else if (event === 'TOKEN_REFRESHED') {
+          // Just update user, don't reload household (already have it)
+          if (session?.user) {
+            store.setUser(session.user);
+          }
           connectionManager.setConnected();
         } else if (event === 'SIGNED_OUT') {
           this.handleSignOut();
