@@ -466,7 +466,12 @@ class UIManager {
 
     return `
       <div class="view-container">
-        <h1>${this.t('dashboard')}</h1>
+        <div class="view-header">
+          <h1>${this.t('dashboard')}</h1>
+          <button class="btn btn-icon refresh-btn" data-action="refresh-data" title="${this.t('refresh') || 'Refresh'}">
+            <span class="refresh-icon">↻</span>
+          </button>
+        </div>
 
         <div class="dashboard-cards">
           <div class="dashboard-card" data-action="navigate" data-view="shopping">
@@ -1262,6 +1267,56 @@ class UIManager {
       case 'delete-quick-add':
         await this.deleteQuickAdd(target.dataset.id, target.dataset.type);
         break;
+
+      case 'refresh-data':
+        await this.refreshData(target);
+        break;
+    }
+  }
+
+  /**
+   * Refresh all data from the server
+   */
+  async refreshData(button) {
+    // Add spinning animation to button
+    if (button) {
+      button.classList.add('refreshing');
+      button.disabled = true;
+    }
+
+    this.showToast(this.t('refreshing') || 'Refreshing...', 'info');
+
+    try {
+      const { authManager } = await import('./auth.js');
+      const { realtimeManager } = await import('./realtime.js');
+      const { queueManager } = await import('./queue.js');
+      const { db } = await import('./database.js');
+
+      // Full refresh: session, realtime, queue, and data
+      await authManager.refreshSession();
+      await realtimeManager.reconnectAll();
+      await queueManager.processQueue();
+
+      // Load fresh data
+      await Promise.all([
+        db.loadShopping(),
+        db.loadTasks(),
+        db.loadClifford(),
+        db.loadPersonalTasks(),
+        db.loadQuickAdd(),
+        db.loadHouseholdMembers()
+      ]);
+
+      this.showToast(this.t('refreshDone') || 'Data refreshed!', 'success');
+    } catch (error) {
+      console.error('[UI] Refresh failed:', error);
+      this.showToast(this.t('refreshFailed') || 'Refresh failed', 'error');
+    } finally {
+      // Remove spinning animation
+      if (button) {
+        button.classList.remove('refreshing');
+        button.disabled = false;
+      }
     }
   }
 

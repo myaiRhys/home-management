@@ -178,13 +178,24 @@ class App {
       }
     };
 
+    // Helper to check if we're at the top of the scroll container
+    // Works around iOS quirks where scrollTop might be on different elements
+    const isAtTop = () => {
+      return appContent.scrollTop <= 0 &&
+             window.scrollY <= 0 &&
+             document.documentElement.scrollTop <= 0;
+    };
+
     // Touch start
     appContent.addEventListener('touchstart', (e) => {
-      // Don't trigger if already refreshing or not at top
+      // Don't trigger if already refreshing
       if (this.pullToRefresh.isRefreshing) return;
-      if (appContent.scrollTop <= 0) {
+
+      // Check if we're at the top
+      if (isAtTop()) {
         this.pullToRefresh.startY = e.touches[0].clientY;
         this.pullToRefresh.isDragging = true;
+        console.log('[App] Pull-to-refresh: touch start at', this.pullToRefresh.startY);
       }
     }, { passive: true });
 
@@ -196,7 +207,7 @@ class App {
       const pullDistance = this.pullToRefresh.currentY - this.pullToRefresh.startY;
 
       // Only show indicator when pulling down from top
-      if (pullDistance > 10 && appContent.scrollTop <= 0) {
+      if (pullDistance > 10 && isAtTop()) {
         const progress = Math.min(pullDistance / this.pullToRefresh.maxPull, 1);
 
         if (pullDistance >= this.pullToRefresh.threshold) {
@@ -208,7 +219,9 @@ class App {
         // Apply transform based on pull distance
         indicator.style.transform = `translateX(-50%) translateY(${Math.min(pullDistance * 0.5, 40)}px)`;
         indicator.style.opacity = Math.min(progress * 1.5, 1);
-      } else {
+      } else if (pullDistance < 0) {
+        // User is scrolling down, cancel pull-to-refresh
+        this.pullToRefresh.isDragging = false;
         updateIndicatorState(null);
         indicator.style.transform = '';
         indicator.style.opacity = '';
@@ -220,9 +233,10 @@ class App {
       if (!this.pullToRefresh.isDragging || this.pullToRefresh.isRefreshing) return;
 
       const pullDistance = this.pullToRefresh.currentY - this.pullToRefresh.startY;
+      console.log('[App] Pull-to-refresh: touch end, distance:', pullDistance);
 
       // Trigger refresh if pulled beyond threshold
-      if (pullDistance >= this.pullToRefresh.threshold && appContent.scrollTop <= 0) {
+      if (pullDistance >= this.pullToRefresh.threshold && isAtTop()) {
         console.log('[App] Pull-to-refresh triggered');
 
         // Set refreshing state
@@ -241,8 +255,9 @@ class App {
           await authManager.refreshSession();
           await realtimeManager.reconnectAll();
           await queueManager.processQueue();
-          await this.reload();
 
+          // Note: reconnectAll() already calls refreshAllData(), so we just show success
+          ui.showToast(ui.t('refreshDone') || 'Data refreshed!', 'success');
           updateIndicatorState('refreshing', ui.t('refreshDone'));
 
           // Brief delay to show success
