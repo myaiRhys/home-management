@@ -12,6 +12,10 @@ class RealtimeManager {
     this.reconnectTimeouts = new Map();
     this.isReconnecting = false;
 
+    // Debounce timers for reload operations
+    this.reloadDebounceTimers = new Map();
+    this.DEBOUNCE_DELAY = 500; // ms
+
     // Listen for reconnection events - wait for auth to refresh first
     window.addEventListener('connection:reconnect', async () => {
       // Wait for auth session to refresh before reconnecting realtime
@@ -21,8 +25,52 @@ class RealtimeManager {
         console.log('[Realtime] Waiting for auth refresh to complete...');
         await refreshPromise;
       }
-      this.reconnectAll();
+      await this.reconnectAll();
+
+      // CRITICAL FIX: Fetch fresh data on reconnect to catch any missed updates
+      // This ensures devices that were sleeping/backgrounded get the latest state
+      await this.refreshAllData();
     });
+  }
+
+  /**
+   * Refresh all data from the server
+   * Called on reconnect to ensure we have the latest state
+   */
+  async refreshAllData() {
+    console.log('[Realtime] Refreshing all data from server...');
+    try {
+      const { db } = await import('./database.js');
+      await Promise.all([
+        db.loadShopping(),
+        db.loadTasks(),
+        db.loadClifford(),
+        db.loadQuickAdd(),
+        db.loadHouseholdMembers()
+      ]);
+      console.log('[Realtime] Data refresh complete');
+    } catch (error) {
+      console.error('[Realtime] Error refreshing data:', error);
+    }
+  }
+
+  /**
+   * Debounced reload for a specific table
+   * Prevents multiple rapid reloads from causing race conditions
+   */
+  debouncedReload(key, reloadFn) {
+    // Clear existing timer
+    if (this.reloadDebounceTimers.has(key)) {
+      clearTimeout(this.reloadDebounceTimers.get(key));
+    }
+
+    // Set new timer
+    const timer = setTimeout(async () => {
+      this.reloadDebounceTimers.delete(key);
+      await reloadFn();
+    }, this.DEBOUNCE_DELAY);
+
+    this.reloadDebounceTimers.set(key, timer);
   }
 
   /**
@@ -188,6 +236,31 @@ class RealtimeManager {
   }
 
   /**
+   * Check if a record matches a temp (optimistic) item
+   * Compares key fields since temp items have different IDs
+   */
+  isTempItemMatch(tempItem, serverRecord, compareFields = ['name', 'household_id']) {
+    if (!tempItem || !serverRecord) return false;
+
+    // Must be a temp item
+    if (!tempItem.id?.toString().startsWith('temp_')) return false;
+
+    // Compare key fields
+    for (const field of compareFields) {
+      if (tempItem[field] !== serverRecord[field]) return false;
+    }
+
+    // Check if created_at is within 30 seconds (allows for clock skew)
+    if (tempItem.created_at && serverRecord.created_at) {
+      const tempTime = new Date(tempItem.created_at).getTime();
+      const serverTime = new Date(serverRecord.created_at).getTime();
+      if (Math.abs(tempTime - serverTime) > 30000) return false;
+    }
+
+    return true;
+  }
+
+  /**
    * Handle shopping changes
    */
   handleShoppingChange(payload) {
@@ -196,13 +269,47 @@ class RealtimeManager {
 
     switch (eventType) {
       case 'INSERT':
-        // Add if not already present (avoid duplicates from optimistic updates)
-        if (!shopping.find(item => item.id === newRecord.id)) {
+        // Check if this item already exists (by real ID)
+        const existingById = shopping.find(item => item.id === newRecord.id);
+        if (existingById) {
+          // Already have this item, just update it to ensure fresh data
+          store.setShopping(
+            shopping.map(item => item.id === newRecord.id ? newRecord : item)
+          );
+          break;
+        }
+
+        // CRITICAL FIX: Check for matching temp (optimistic) item
+        // This handles the race condition where realtime arrives before DB insert completes
+        const tempItemIndex = shopping.findIndex(item =>
+          this.isTempItemMatch(item, newRecord)
+        );
+
+        if (tempItemIndex !== -1) {
+          // Found a matching temp item - replace it with the real one
+          console.log('[Realtime] Replacing temp item with server record:', newRecord.id);
+          const newShopping = [...shopping];
+          newShopping[tempItemIndex] = newRecord;
+          store.setShopping(newShopping);
+        } else {
+          // New item from another device - add it
           store.setShopping([newRecord, ...shopping]);
         }
         break;
 
       case 'UPDATE':
+        // IMPROVEMENT: Timestamp-based conflict resolution
+        // Only apply update if server record is newer than local
+        const localItem = shopping.find(item => item.id === newRecord.id);
+        if (localItem && localItem.updated_at && newRecord.updated_at) {
+          const localTime = new Date(localItem.updated_at).getTime();
+          const serverTime = new Date(newRecord.updated_at).getTime();
+          if (localTime > serverTime) {
+            console.log('[Realtime] Ignoring older update for:', newRecord.id);
+            break;
+          }
+        }
+
         store.setShopping(
           shopping.map(item =>
             item.id === newRecord.id ? newRecord : item
@@ -227,12 +334,42 @@ class RealtimeManager {
 
     switch (eventType) {
       case 'INSERT':
-        if (!tasks.find(task => task.id === newRecord.id)) {
+        // Check if this item already exists (by real ID)
+        const existingById = tasks.find(task => task.id === newRecord.id);
+        if (existingById) {
+          store.setTasks(
+            tasks.map(task => task.id === newRecord.id ? newRecord : task)
+          );
+          break;
+        }
+
+        // Check for matching temp (optimistic) item
+        const tempItemIndex = tasks.findIndex(task =>
+          this.isTempItemMatch(task, newRecord)
+        );
+
+        if (tempItemIndex !== -1) {
+          console.log('[Realtime] Replacing temp task with server record:', newRecord.id);
+          const newTasks = [...tasks];
+          newTasks[tempItemIndex] = newRecord;
+          store.setTasks(newTasks);
+        } else {
           store.setTasks([newRecord, ...tasks]);
         }
         break;
 
       case 'UPDATE':
+        // Timestamp-based conflict resolution
+        const localTask = tasks.find(task => task.id === newRecord.id);
+        if (localTask && localTask.updated_at && newRecord.updated_at) {
+          const localTime = new Date(localTask.updated_at).getTime();
+          const serverTime = new Date(newRecord.updated_at).getTime();
+          if (localTime > serverTime) {
+            console.log('[Realtime] Ignoring older task update for:', newRecord.id);
+            break;
+          }
+        }
+
         store.setTasks(
           tasks.map(task =>
             task.id === newRecord.id ? newRecord : task
@@ -257,12 +394,42 @@ class RealtimeManager {
 
     switch (eventType) {
       case 'INSERT':
-        if (!clifford.find(item => item.id === newRecord.id)) {
+        // Check if this item already exists (by real ID)
+        const existingById = clifford.find(item => item.id === newRecord.id);
+        if (existingById) {
+          store.setClifford(
+            clifford.map(item => item.id === newRecord.id ? newRecord : item)
+          );
+          break;
+        }
+
+        // Check for matching temp (optimistic) item
+        const tempItemIndex = clifford.findIndex(item =>
+          this.isTempItemMatch(item, newRecord)
+        );
+
+        if (tempItemIndex !== -1) {
+          console.log('[Realtime] Replacing temp clifford with server record:', newRecord.id);
+          const newClifford = [...clifford];
+          newClifford[tempItemIndex] = newRecord;
+          store.setClifford(newClifford);
+        } else {
           store.setClifford([newRecord, ...clifford]);
         }
         break;
 
       case 'UPDATE':
+        // Timestamp-based conflict resolution
+        const localItem = clifford.find(item => item.id === newRecord.id);
+        if (localItem && localItem.updated_at && newRecord.updated_at) {
+          const localTime = new Date(localItem.updated_at).getTime();
+          const serverTime = new Date(newRecord.updated_at).getTime();
+          if (localTime > serverTime) {
+            console.log('[Realtime] Ignoring older clifford update for:', newRecord.id);
+            break;
+          }
+        }
+
         store.setClifford(
           clifford.map(item =>
             item.id === newRecord.id ? newRecord : item
@@ -324,10 +491,13 @@ class RealtimeManager {
   async handleHouseholdMembersChange(payload) {
     const { eventType } = payload;
 
-    // Reload all members on any change to get fresh data with user info joined
-    // This ensures we have the latest member list with email addresses
-    const { db } = await import('./database.js');
-    await db.loadHouseholdMembers();
+    // CRITICAL FIX: Debounce member reloads to prevent race conditions
+    // Multiple rapid events (e.g., bulk member changes) could cause data loss
+    this.debouncedReload('household_members', async () => {
+      console.log('[Realtime] Reloading household members (debounced)');
+      const { db } = await import('./database.js');
+      await db.loadHouseholdMembers();
+    });
   }
 }
 
