@@ -156,10 +156,22 @@ class AuthManager {
    * Returns a promise that resolves when refresh is complete
    */
   async refreshSession() {
-    // If already refreshing, return the existing promise
+    // If already refreshing, wait with timeout to prevent stale promise blocking
     if (this.refreshPromise) {
-      console.log('[Auth] Refresh already in progress, waiting...');
-      return this.refreshPromise;
+      console.log('[Auth] Refresh already in progress, waiting with timeout...');
+      const timeout = new Promise(resolve => setTimeout(() => {
+        console.log('[Auth] Refresh wait timeout, clearing stale promise');
+        this.refreshPromise = null;
+        resolve({ data: null, error: new Error('Refresh timeout - stale promise cleared') });
+      }, 5000));
+
+      const result = await Promise.race([this.refreshPromise, timeout]);
+      // If we got a result from the actual promise, return it
+      // If we got a timeout, the promise was cleared and we'll start fresh below
+      if (result && !result.error?.message?.includes('stale promise')) {
+        return result;
+      }
+      // Fall through to start a new refresh
     }
 
     console.log('[Auth] Refreshing session...');
