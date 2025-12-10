@@ -91,38 +91,22 @@ class DatabaseManager {
         return inserted;
       });
 
-      // IDEMPOTENCY FIX: Mark this insert as successfully processed
-      // This prevents the operation from being queued again if a network error
-      // occurred after the insert succeeded but before we received the response
-      queueManager.markAsProcessed({
-        type: OperationType.INSERT,
-        table,
-        data
-      });
-
       return { data: result, error: null };
 
     } catch (error) {
       console.error(`[DB] Insert error on ${table}:`, error);
 
-      // Detect and report specific error types
+      // Show user-friendly error messages
       if (error.message?.includes('policy') || error.code === '42501') {
         this.dispatchError('Unable to save - permission denied. Please check your household membership.', error);
       } else if (error.message?.includes('timeout')) {
-        this.dispatchError('Save timed out - will retry when connection improves', error);
+        this.dispatchError('Save timed out - please try again', error);
       } else if (error.message?.includes('JWT') || error.message?.includes('auth')) {
         this.dispatchError('Session expired - please refresh the page', error);
       } else if (!navigator.onLine) {
-        this.dispatchError('You are offline - changes will sync when connected', error);
-      }
-
-      // Queue for later if appropriate
-      if (shouldQueue && this.shouldQueue(error)) {
-        queueManager.enqueue({
-          type: OperationType.INSERT,
-          table,
-          data
-        });
+        this.dispatchError('You are offline - please try again when connected', error);
+      } else {
+        this.dispatchError('Failed to save - please try again', error);
       }
 
       return { data: null, error };
@@ -554,52 +538,45 @@ class DatabaseManager {
       created_at: new Date().toISOString()
     };
 
-    // Optimistic update
-    const tempId = `temp_${Date.now()}`;
-    const tempItem = { ...item, id: tempId };
-    store.setShopping([tempItem, ...store.getShopping()]);
-
+    // Simple: just insert to database
+    // Realtime subscription will reload and show to all household members
     const { data, error } = await this.insert(Tables.SHOPPING, item);
 
+    // If successful, add to local store immediately (realtime will also update)
     if (data) {
-      // Replace temp item with real one
-      const shopping = store.getShopping().filter(i => i.id !== tempId);
-      store.setShopping([data, ...shopping]);
-    } else if (error) {
-      // Mark as pending
-      tempItem.pending = true;
-      store.setShopping(store.getShopping());
+      const shopping = store.getShopping();
+      // Only add if not already present (realtime might have beaten us)
+      if (!shopping.find(i => i.id === data.id)) {
+        store.setShopping([data, ...shopping]);
+      }
     }
 
     return { data, error };
   }
 
   async updateShoppingItem(id, updates) {
-    // Optimistic update
-    const shopping = store.getShopping().map(item =>
-      item.id === id ? { ...item, ...updates } : item
-    );
-    store.setShopping(shopping);
-
     const { data, error } = await this.update(Tables.SHOPPING, id, updates);
 
-    if (error) {
-      // Mark as pending
-      const updatedShopping = store.getShopping().map(item =>
-        item.id === id ? { ...item, pending: true } : item
+    // Update local store immediately if successful
+    if (data) {
+      store.setShopping(
+        store.getShopping().map(item => item.id === id ? data : item)
       );
-      store.setShopping(updatedShopping);
     }
 
     return { data, error };
   }
 
   async deleteShoppingItem(id) {
-    // Optimistic delete
-    const shopping = store.getShopping().filter(item => item.id !== id);
-    store.setShopping(shopping);
+    // Remove from local store first for responsive UI
+    store.setShopping(store.getShopping().filter(item => item.id !== id));
 
     const { data, error } = await this.delete(Tables.SHOPPING, id);
+
+    // If delete failed, reload to restore the item
+    if (error) {
+      await this.loadShopping();
+    }
 
     return { data, error };
   }
@@ -643,47 +620,38 @@ class DatabaseManager {
       created_at: new Date().toISOString()
     };
 
-    // Optimistic update
-    const tempId = `temp_${Date.now()}`;
-    const tempTask = { ...task, id: tempId };
-    store.setTasks([tempTask, ...store.getTasks()]);
-
     const { data, error } = await this.insert(Tables.TASKS, task);
 
     if (data) {
-      const tasks = store.getTasks().filter(t => t.id !== tempId);
-      store.setTasks([data, ...tasks]);
-    } else if (error) {
-      tempTask.pending = true;
-      store.setTasks(store.getTasks());
+      const tasks = store.getTasks();
+      if (!tasks.find(t => t.id === data.id)) {
+        store.setTasks([data, ...tasks]);
+      }
     }
 
     return { data, error };
   }
 
   async updateTask(id, updates) {
-    const tasks = store.getTasks().map(task =>
-      task.id === id ? { ...task, ...updates } : task
-    );
-    store.setTasks(tasks);
-
     const { data, error } = await this.update(Tables.TASKS, id, updates);
 
-    if (error) {
-      const updatedTasks = store.getTasks().map(task =>
-        task.id === id ? { ...task, pending: true } : task
+    if (data) {
+      store.setTasks(
+        store.getTasks().map(task => task.id === id ? data : task)
       );
-      store.setTasks(updatedTasks);
     }
 
     return { data, error };
   }
 
   async deleteTask(id) {
-    const tasks = store.getTasks().filter(task => task.id !== id);
-    store.setTasks(tasks);
+    store.setTasks(store.getTasks().filter(task => task.id !== id));
 
     const { data, error } = await this.delete(Tables.TASKS, id);
+
+    if (error) {
+      await this.loadTasks();
+    }
 
     return { data, error };
   }
@@ -727,46 +695,38 @@ class DatabaseManager {
       created_at: new Date().toISOString()
     };
 
-    const tempId = `temp_${Date.now()}`;
-    const tempClifford = { ...clifford, id: tempId };
-    store.setClifford([tempClifford, ...store.getClifford()]);
-
     const { data, error } = await this.insert(Tables.CLIFFORD, clifford);
 
     if (data) {
-      const cliffords = store.getClifford().filter(c => c.id !== tempId);
-      store.setClifford([data, ...cliffords]);
-    } else if (error) {
-      tempClifford.pending = true;
-      store.setClifford(store.getClifford());
+      const cliffords = store.getClifford();
+      if (!cliffords.find(c => c.id === data.id)) {
+        store.setClifford([data, ...cliffords]);
+      }
     }
 
     return { data, error };
   }
 
   async updateClifford(id, updates) {
-    const cliffords = store.getClifford().map(clifford =>
-      clifford.id === id ? { ...clifford, ...updates } : clifford
-    );
-    store.setClifford(cliffords);
-
     const { data, error } = await this.update(Tables.CLIFFORD, id, updates);
 
-    if (error) {
-      const updatedCliffords = store.getClifford().map(clifford =>
-        clifford.id === id ? { ...clifford, pending: true } : clifford
+    if (data) {
+      store.setClifford(
+        store.getClifford().map(clifford => clifford.id === id ? data : clifford)
       );
-      store.setClifford(updatedCliffords);
     }
 
     return { data, error };
   }
 
   async deleteClifford(id) {
-    const cliffords = store.getClifford().filter(clifford => clifford.id !== id);
-    store.setClifford(cliffords);
+    store.setClifford(store.getClifford().filter(clifford => clifford.id !== id));
 
     const { data, error } = await this.delete(Tables.CLIFFORD, id);
+
+    if (error) {
+      await this.loadClifford();
+    }
 
     return { data, error };
   }
