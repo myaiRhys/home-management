@@ -1278,6 +1278,8 @@ class UIManager {
    * Refresh all data from the server
    */
   async refreshData(button) {
+    console.log('[UI] Refresh button clicked');
+
     // Add spinning animation to button
     if (button) {
       button.classList.add('refreshing');
@@ -1287,17 +1289,24 @@ class UIManager {
     this.showToast(this.t('refreshing') || 'Refreshing...', 'info');
 
     try {
+      console.log('[UI] Starting refresh...');
       const { authManager } = await import('./auth.js');
       const { realtimeManager } = await import('./realtime.js');
       const { queueManager } = await import('./queue.js');
       const { db } = await import('./database.js');
 
       // Full refresh: session, realtime, queue, and data
+      console.log('[UI] Refreshing session...');
       await authManager.refreshSession();
+
+      console.log('[UI] Reconnecting realtime...');
       await realtimeManager.reconnectAll();
+
+      console.log('[UI] Processing queue...');
       await queueManager.processQueue();
 
       // Load fresh data
+      console.log('[UI] Loading fresh data...');
       await Promise.all([
         db.loadShopping(),
         db.loadTasks(),
@@ -1307,6 +1316,7 @@ class UIManager {
         db.loadHouseholdMembers()
       ]);
 
+      console.log('[UI] Refresh complete!');
       this.showToast(this.t('refreshDone') || 'Data refreshed!', 'success');
     } catch (error) {
       console.error('[UI] Refresh failed:', error);
