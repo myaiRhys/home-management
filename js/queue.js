@@ -65,6 +65,15 @@ class QueueManager {
     return [...this.queue];
   }
 
+  /**
+   * Check if an item has pending operations
+   */
+  hasPendingOperations(table, itemId) {
+    return this.queue.some(op =>
+      op.table === table && op.data?.id === itemId
+    );
+  }
+
   clear() {
     this.queue = [];
     this.saveQueue();
