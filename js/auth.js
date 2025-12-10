@@ -169,7 +169,8 @@ class AuthManager {
 
         if (session) {
           console.log('[Auth] Session refreshed successfully');
-          await this.handleSession(session);
+          // Just update the user, don't reload household (that's done separately)
+          store.setUser(session.user);
         }
 
         return { data: session, error: null };
