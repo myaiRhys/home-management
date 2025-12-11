@@ -109,8 +109,8 @@ class ConnectionGate {
         }
 
         // Check 2: Valid session
-        const session = await authManager.getSession();
-        if (!session) {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !session) {
           console.log('[ConnectionGate] No valid session');
           throw new Error('No session');
         }
