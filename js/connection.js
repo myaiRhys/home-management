@@ -144,11 +144,11 @@ class ConnectionManager {
       if (shouldFullReconnect) {
         console.log('[Connection] Full reconnect required (iOS or long background)');
         this.setState(ConnectionState.RECONNECTING);
-        this.attemptReconnect();
+        // Use setTimeout to avoid blocking the UI thread
+        setTimeout(() => this.attemptReconnect(), 100);
       } else {
-        console.log('[Connection] Quick verification after short background');
-        // Trigger connection gate verification
-        window.dispatchEvent(new CustomEvent('connection:verify'));
+        console.log('[Connection] Quick verification - no action needed, connection gate will verify on next operation');
+        // Don't trigger anything - let connection gate verify naturally on next operation
       }
 
       this.backgroundStartTime = null;
@@ -174,11 +174,12 @@ class ConnectionManager {
     console.log(`[Connection] Window focused after ${backgroundDuration}ms`);
 
     if (navigator.onLine) {
-      // AGGRESSIVE: On iOS, always reconnect when focusing
-      if (this.isIOS || backgroundDuration > this.BACKGROUND_THRESHOLD || this.state !== ConnectionState.CONNECTED) {
-        console.log('[Connection] Reconnecting on focus...');
+      // Only reconnect if we've been disconnected or backgrounded for a long time
+      if ((this.isIOS && backgroundDuration > 1000) || backgroundDuration > this.BACKGROUND_THRESHOLD || this.state === ConnectionState.OFFLINE) {
+        console.log('[Connection] Reconnecting on focus after background...');
         this.setState(ConnectionState.RECONNECTING);
-        this.attemptReconnect();
+        // Use setTimeout to avoid blocking the UI thread
+        setTimeout(() => this.attemptReconnect(), 100);
       }
     }
 
