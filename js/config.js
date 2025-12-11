@@ -19,7 +19,8 @@ export const STORAGE_KEYS = {
   QUEUE: 'thibault_queue',
   USER: 'thibault_user',
   HOUSEHOLD: 'thibault_household',
-  NOTIFICATION_PREFS: 'thibault_notification_prefs'
+  NOTIFICATION_PREFS: 'thibault_notification_prefs',
+  SYNC_STATE: 'thibault_sync_state'
 };
 
 // Connection states

@@ -246,6 +246,76 @@ class DatabaseManager {
   }
 
   /**
+   * Fetch delta - only records updated since lastSyncedAt
+   * Used for efficient incremental sync
+   *
+   * @param {string} table - Table name
+   * @param {string} householdId - Household ID
+   * @param {string} lastSyncedAt - ISO timestamp of last sync
+   * @returns {Object} { updated: Array, maxUpdatedAt: string }
+   */
+  async fetchDelta(table, householdId, lastSyncedAt) {
+    try {
+      const result = await this.executeWithTimeout(async () => {
+        const { data, error } = await supabase
+          .from(table)
+          .select('*')
+          .eq('household_id', householdId)
+          .or(`updated_at.gt.${lastSyncedAt},created_at.gt.${lastSyncedAt}`)
+          .order('updated_at', { ascending: false });
+
+        if (error) throw error;
+        return data || [];
+      });
+
+      // Calculate max updated_at from results
+      let maxUpdatedAt = null;
+      if (result && result.length > 0) {
+        for (const item of result) {
+          const itemUpdated = item.updated_at || item.created_at;
+          if (!maxUpdatedAt || itemUpdated > maxUpdatedAt) {
+            maxUpdatedAt = itemUpdated;
+          }
+        }
+      }
+
+      return { updated: result || [], maxUpdatedAt };
+
+    } catch (error) {
+      console.error(`[DB] Delta fetch error on ${table}:`, error);
+      return { updated: [], maxUpdatedAt: null };
+    }
+  }
+
+  /**
+   * Fetch all records for a table (for full sync)
+   *
+   * @param {string} table - Table name
+   * @param {string} householdId - Household ID
+   * @returns {Object} { data: Array, error: Error }
+   */
+  async fetchAll(table, householdId) {
+    try {
+      const result = await this.executeWithTimeout(async () => {
+        const { data, error } = await supabase
+          .from(table)
+          .select('*')
+          .eq('household_id', householdId)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data || [];
+      });
+
+      return { data: result, error: null };
+
+    } catch (error) {
+      console.error(`[DB] Fetch all error on ${table}:`, error);
+      return { data: null, error };
+    }
+  }
+
+  /**
    * Determine if operation should be queued
    */
   shouldQueue(error) {

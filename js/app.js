@@ -259,12 +259,13 @@ class App {
         }
 
         try {
-          // Full refresh: session, realtime, queue, and data
+          // Full refresh: session, queue, and sync
           await authManager.refreshSession();
-          await realtimeManager.reconnectAll();
           await queueManager.processQueue();
 
-          // Note: reconnectAll() already calls refreshAllData(), so we just show success
+          // Use sync manager for data refresh (smart merge, not overwrite)
+          await syncManager.forceSync();
+
           ui.showToast(ui.t('refreshDone') || 'Data refreshed!', 'success');
           updateIndicatorState('refreshing', ui.t('refreshDone'));
 
@@ -312,18 +313,30 @@ if (document.readyState === 'loading') {
   app.initialize();
 }
 
-// Listen for connection events and reload data
+// Listen for connection events - use sync manager for data refresh
 window.addEventListener('connection:reconnect', async () => {
-  console.log('[App] Reconnection detected, refreshing data...');
+  console.log('[App] Reconnection detected...');
 
-  // Refresh auth session first
-  await authManager.refreshSession();
+  try {
+    // Refresh auth session first
+    await authManager.refreshSession();
 
-  // Process queue
-  await queueManager.processQueue();
+    // Process any queued operations
+    await queueManager.processQueue();
 
-  // Reload data
-  await app.reload();
+    // Let sync manager handle the data refresh (uses delta sync)
+    // Don't call app.reload() - that would bypass the merge logic
+    await syncManager.fullSync();
+
+    // Reconnect realtime (opportunistic, non-blocking)
+    realtimeManager.reconnectAll().catch(err =>
+      console.warn('[App] Realtime reconnect failed (non-fatal):', err.message)
+    );
+
+    console.log('[App] Reconnection complete');
+  } catch (error) {
+    console.error('[App] Reconnection error:', error);
+  }
 });
 
 // Listen for database error events and show toast notifications

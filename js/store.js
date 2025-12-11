@@ -425,6 +425,146 @@ class Store {
   toggleNotificationPanel() {
     this.setState({ showNotificationPanel: !this.state.showNotificationPanel });
   }
+
+  // ============================
+  // MERGE METHODS (for delta sync)
+  // These intelligently merge server data without overwriting local changes
+  // ============================
+
+  /**
+   * Merge incoming items with existing state
+   * - Updates existing items if server version is newer
+   * - Adds new items
+   * - Preserves items with pending local changes
+   *
+   * @param {string} key - State key (shopping, tasks, clifford)
+   * @param {Array} serverItems - Items from server
+   * @param {Function} setter - Optional custom setter
+   */
+  mergeItems(key, serverItems) {
+    if (!serverItems || serverItems.length === 0) return;
+
+    const current = this.state[key] || [];
+    const merged = [...current];
+
+    for (const serverItem of serverItems) {
+      const existingIndex = merged.findIndex(item => item.id === serverItem.id);
+
+      if (existingIndex >= 0) {
+        const existing = merged[existingIndex];
+
+        // Don't overwrite items with pending local changes
+        if (existing.pending) {
+          console.log(`[Store] Skipping ${key} item ${serverItem.id} - has pending changes`);
+          continue;
+        }
+
+        // Only update if server version is newer
+        const serverUpdated = serverItem.updated_at || serverItem.created_at;
+        const localUpdated = existing.updated_at || existing.created_at;
+
+        if (serverUpdated >= localUpdated) {
+          merged[existingIndex] = serverItem;
+        }
+      } else {
+        // New item from server - add it
+        merged.push(serverItem);
+      }
+    }
+
+    // Sort by created_at desc (newest first)
+    merged.sort((a, b) => {
+      const aTime = new Date(a.created_at || 0).getTime();
+      const bTime = new Date(b.created_at || 0).getTime();
+      return bTime - aTime;
+    });
+
+    this.setState({ [key]: merged });
+  }
+
+  /**
+   * Full merge with deletion detection
+   * - Merges all items
+   * - Removes items that no longer exist on server (unless pending)
+   *
+   * @param {string} key - State key
+   * @param {Array} serverItems - Complete list from server
+   */
+  fullMergeItems(key, serverItems) {
+    if (!serverItems) return;
+
+    const current = this.state[key] || [];
+    const serverIds = new Set(serverItems.map(item => item.id));
+
+    // Start with server items
+    const merged = [...serverItems];
+
+    // Add back any items with pending local changes that aren't on server
+    // (they might be newly created and not yet synced)
+    for (const localItem of current) {
+      if (localItem.pending && !serverIds.has(localItem.id)) {
+        merged.push(localItem);
+      }
+    }
+
+    // Sort by created_at desc
+    merged.sort((a, b) => {
+      const aTime = new Date(a.created_at || 0).getTime();
+      const bTime = new Date(b.created_at || 0).getTime();
+      return bTime - aTime;
+    });
+
+    this.setState({ [key]: merged });
+  }
+
+  // Convenience merge methods
+  mergeShopping(items) {
+    this.mergeItems('shopping', items);
+  }
+
+  mergeTasks(items) {
+    this.mergeItems('tasks', items);
+  }
+
+  mergeClifford(items) {
+    this.mergeItems('clifford', items);
+  }
+
+  fullMergeShopping(items) {
+    this.fullMergeItems('shopping', items);
+  }
+
+  fullMergeTasks(items) {
+    this.fullMergeItems('tasks', items);
+  }
+
+  fullMergeClifford(items) {
+    this.fullMergeItems('clifford', items);
+  }
+
+  /**
+   * Mark an item as having pending local changes
+   * Call this before making optimistic updates
+   */
+  markPending(key, itemId) {
+    const items = this.state[key] || [];
+    const updated = items.map(item =>
+      item.id === itemId ? { ...item, pending: true } : item
+    );
+    this.setState({ [key]: updated });
+  }
+
+  /**
+   * Clear pending flag from an item
+   * Call this after server confirms the change
+   */
+  clearPending(key, itemId) {
+    const items = this.state[key] || [];
+    const updated = items.map(item =>
+      item.id === itemId ? { ...item, pending: false } : item
+    );
+    this.setState({ [key]: updated });
+  }
 }
 
 // Singleton instance
