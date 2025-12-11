@@ -2,7 +2,7 @@ import { supabase, authManager } from './auth.js';
 import { store } from './store.js';
 import { connectionManager } from './connection.js';
 import { queueManager } from './queue.js';
-import { DB_OPERATION_TIMEOUT, MAX_RETRY_ATTEMPTS, Tables, OperationType, INVITE_CODE_LENGTH } from './config.js';
+import { DB_OPERATION_TIMEOUT, MAX_RETRY_ATTEMPTS, Tables, OperationType, INVITE_CODE_LENGTH, NotificationType } from './config.js';
 
 /**
  * Database Operations Manager
@@ -549,6 +549,12 @@ class DatabaseManager {
       if (!shopping.find(i => i.id === data.id)) {
         store.setShopping([data, ...shopping]);
       }
+
+      // Send notification (broadcast to household)
+      const prefs = store.getNotificationPreferences();
+      if (prefs.shopping_added) {
+        this.sendShoppingAddedNotification(name, data.id).catch(console.error);
+      }
     }
 
     return { data, error };
@@ -627,18 +633,45 @@ class DatabaseManager {
       if (!tasks.find(t => t.id === data.id)) {
         store.setTasks([data, ...tasks]);
       }
+
+      // Send notification if task is assigned to someone
+      if (assignee) {
+        const prefs = store.getNotificationPreferences();
+        if (prefs.task_assigned) {
+          this.sendTaskAssignedNotification(name, assignee, data.id, 'tasks').catch(console.error);
+        }
+      }
     }
 
     return { data, error };
   }
 
   async updateTask(id, updates) {
+    // Get original task to check for changes
+    const originalTask = store.getTasks().find(t => t.id === id);
+
     const { data, error } = await this.update(Tables.TASKS, id, updates);
 
     if (data) {
       store.setTasks(
         store.getTasks().map(task => task.id === id ? data : task)
       );
+
+      const prefs = store.getNotificationPreferences();
+
+      // Send notification if task was just completed
+      if (updates.completed === true && originalTask && !originalTask.completed) {
+        if (prefs.task_completed) {
+          this.sendTaskCompletedNotification(originalTask.name, id, 'tasks').catch(console.error);
+        }
+      }
+
+      // Send notification if task was assigned to a new person
+      if (updates.assignee && originalTask && updates.assignee !== originalTask.assignee) {
+        if (prefs.task_assigned) {
+          this.sendTaskAssignedNotification(originalTask.name, updates.assignee, id, 'tasks').catch(console.error);
+        }
+      }
     }
 
     return { data, error };
@@ -702,18 +735,45 @@ class DatabaseManager {
       if (!cliffords.find(c => c.id === data.id)) {
         store.setClifford([data, ...cliffords]);
       }
+
+      // Send notification if clifford task is assigned to someone
+      if (assignee) {
+        const prefs = store.getNotificationPreferences();
+        if (prefs.clifford_assigned) {
+          this.sendTaskAssignedNotification(name, assignee, data.id, 'clifford').catch(console.error);
+        }
+      }
     }
 
     return { data, error };
   }
 
   async updateClifford(id, updates) {
+    // Get original task to check for changes
+    const originalClifford = store.getClifford().find(c => c.id === id);
+
     const { data, error } = await this.update(Tables.CLIFFORD, id, updates);
 
     if (data) {
       store.setClifford(
         store.getClifford().map(clifford => clifford.id === id ? data : clifford)
       );
+
+      const prefs = store.getNotificationPreferences();
+
+      // Send notification if task was just completed
+      if (updates.completed === true && originalClifford && !originalClifford.completed) {
+        if (prefs.task_completed) {
+          this.sendTaskCompletedNotification(originalClifford.name, id, 'clifford').catch(console.error);
+        }
+      }
+
+      // Send notification if task was assigned to a new person
+      if (updates.assignee && originalClifford && updates.assignee !== originalClifford.assignee) {
+        if (prefs.clifford_assigned) {
+          this.sendTaskAssignedNotification(originalClifford.name, updates.assignee, id, 'clifford').catch(console.error);
+        }
+      }
     }
 
     return { data, error };
@@ -915,6 +975,263 @@ class DatabaseManager {
     }
 
     return { data, error };
+  }
+
+  // ============================
+  // NOTIFICATION OPERATIONS
+  // ============================
+
+  /**
+   * Load notifications for the current user
+   */
+  async loadNotifications() {
+    const user = authManager.getCurrentUser();
+    const household = authManager.getCurrentHousehold();
+    if (!user || !household) {
+      return { data: [], error: null };
+    }
+
+    try {
+      const result = await this.executeWithTimeout(async () => {
+        // Get notifications for current user OR broadcast notifications for household
+        const { data, error } = await supabase
+          .from(Tables.NOTIFICATIONS)
+          .select('*')
+          .or(`to_user_id.eq.${user.id},and(to_user_id.is.null,household_id.eq.${household.id})`)
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (error) throw error;
+        return data;
+      });
+
+      if (result) {
+        store.setNotifications(result);
+      }
+
+      return { data: result, error: null };
+    } catch (error) {
+      console.error('[DB] Load notifications error:', error);
+      return { data: null, error };
+    }
+  }
+
+  /**
+   * Create a notification
+   */
+  async createNotification({ type, title, message, toUserId = null, relatedItemId = null, relatedTable = null }) {
+    const household = authManager.getCurrentHousehold();
+    const user = authManager.getCurrentUser();
+    if (!household || !user) {
+      return { data: null, error: new Error('No household or user') };
+    }
+
+    // Don't send notification to yourself
+    if (toUserId === user.id) {
+      return { data: null, error: null };
+    }
+
+    const notification = {
+      household_id: household.id,
+      from_user_id: user.id,
+      to_user_id: toUserId,
+      type,
+      title,
+      message,
+      related_item_id: relatedItemId,
+      related_table: relatedTable,
+      read: false,
+      created_at: new Date().toISOString()
+    };
+
+    const { data, error } = await this.insert(Tables.NOTIFICATIONS, notification);
+
+    return { data, error };
+  }
+
+  /**
+   * Mark a notification as read
+   */
+  async markNotificationAsRead(id) {
+    const { data, error } = await this.update(Tables.NOTIFICATIONS, id, { read: true });
+
+    if (!error) {
+      store.markNotificationAsRead(id);
+    }
+
+    return { data, error };
+  }
+
+  /**
+   * Mark all notifications as read
+   */
+  async markAllNotificationsAsRead() {
+    const user = authManager.getCurrentUser();
+    const household = authManager.getCurrentHousehold();
+    if (!user || !household) {
+      return { data: null, error: new Error('No user or household') };
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from(Tables.NOTIFICATIONS)
+        .update({ read: true, updated_at: new Date().toISOString() })
+        .or(`to_user_id.eq.${user.id},and(to_user_id.is.null,household_id.eq.${household.id})`)
+        .eq('read', false);
+
+      if (!error) {
+        store.markAllNotificationsAsRead();
+      }
+
+      return { data, error };
+    } catch (error) {
+      console.error('[DB] Mark all notifications as read error:', error);
+      return { data: null, error };
+    }
+  }
+
+  /**
+   * Delete a notification
+   */
+  async deleteNotification(id) {
+    const { data, error } = await this.delete(Tables.NOTIFICATIONS, id);
+
+    if (!error) {
+      store.removeNotification(id);
+    }
+
+    return { data, error };
+  }
+
+  /**
+   * Load notification preferences for current user
+   */
+  async loadNotificationPreferences() {
+    const user = authManager.getCurrentUser();
+    if (!user) {
+      return { data: null, error: null };
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from(Tables.NOTIFICATION_PREFERENCES)
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        // PGRST116 = no rows found, which is fine
+        throw error;
+      }
+
+      if (data) {
+        store.setNotificationPreferences({
+          task_assigned: data.task_assigned,
+          shopping_added: data.shopping_added,
+          task_completed: data.task_completed,
+          clifford_assigned: data.clifford_assigned
+        });
+      }
+
+      return { data, error: null };
+    } catch (error) {
+      console.error('[DB] Load notification preferences error:', error);
+      return { data: null, error };
+    }
+  }
+
+  /**
+   * Save notification preferences for current user
+   */
+  async saveNotificationPreferences(preferences) {
+    const user = authManager.getCurrentUser();
+    const household = authManager.getCurrentHousehold();
+    if (!user) {
+      return { data: null, error: new Error('Not authenticated') };
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from(Tables.NOTIFICATION_PREFERENCES)
+        .upsert({
+          user_id: user.id,
+          household_id: household?.id,
+          task_assigned: preferences.task_assigned,
+          shopping_added: preferences.shopping_added,
+          task_completed: preferences.task_completed,
+          clifford_assigned: preferences.clifford_assigned,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id'
+        });
+
+      if (!error) {
+        store.setNotificationPreferences(preferences);
+      }
+
+      return { data, error };
+    } catch (error) {
+      console.error('[DB] Save notification preferences error:', error);
+      return { data: null, error };
+    }
+  }
+
+  /**
+   * Helper: Get display name for a user
+   */
+  getMemberDisplayName(userId) {
+    const members = store.getHouseholdMembers();
+    const member = members.find(m => m.user_id === userId);
+    return member?.profiles?.display_name || member?.users?.email || 'Someone';
+  }
+
+  /**
+   * Send task assignment notification
+   */
+  async sendTaskAssignedNotification(taskName, assigneeUserId, taskId, table = 'tasks') {
+    const fromUserName = this.getMemberDisplayName(authManager.getCurrentUser()?.id);
+    const notifType = table === 'clifford' ? NotificationType.CLIFFORD_ASSIGNED : NotificationType.TASK_ASSIGNED;
+
+    return this.createNotification({
+      type: notifType,
+      title: 'Task Assigned',
+      message: `${fromUserName} assigned you: "${taskName}"`,
+      toUserId: assigneeUserId,
+      relatedItemId: taskId,
+      relatedTable: table
+    });
+  }
+
+  /**
+   * Send shopping item added notification (broadcast)
+   */
+  async sendShoppingAddedNotification(itemName, itemId) {
+    const fromUserName = this.getMemberDisplayName(authManager.getCurrentUser()?.id);
+
+    return this.createNotification({
+      type: NotificationType.SHOPPING_ADDED,
+      title: 'Shopping List Updated',
+      message: `${fromUserName} added "${itemName}" to the shopping list`,
+      toUserId: null, // Broadcast to household
+      relatedItemId: itemId,
+      relatedTable: 'shopping'
+    });
+  }
+
+  /**
+   * Send task completed notification
+   */
+  async sendTaskCompletedNotification(taskName, taskId, table = 'tasks') {
+    const fromUserName = this.getMemberDisplayName(authManager.getCurrentUser()?.id);
+
+    return this.createNotification({
+      type: NotificationType.TASK_COMPLETED,
+      title: 'Task Completed',
+      message: `${fromUserName} completed: "${taskName}"`,
+      toUserId: null, // Broadcast to household
+      relatedItemId: taskId,
+      relatedTable: table
+    });
   }
 }
 

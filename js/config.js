@@ -18,7 +18,8 @@ export const STORAGE_KEYS = {
   LANGUAGE: 'thibault_language',
   QUEUE: 'thibault_queue',
   USER: 'thibault_user',
-  HOUSEHOLD: 'thibault_household'
+  HOUSEHOLD: 'thibault_household',
+  NOTIFICATION_PREFS: 'thibault_notification_prefs'
 };
 
 // Connection states
@@ -44,5 +45,15 @@ export const Tables = {
   QUICK_ADD: 'quick_add',
   HOUSEHOLDS: 'households',
   HOUSEHOLD_MEMBERS: 'household_members',
-  PERSONAL_TASKS: 'personal_tasks'
+  PERSONAL_TASKS: 'personal_tasks',
+  NOTIFICATIONS: 'notifications',
+  NOTIFICATION_PREFERENCES: 'notification_preferences'
+};
+
+// Notification types
+export const NotificationType = {
+  TASK_ASSIGNED: 'task_assigned',
+  SHOPPING_ADDED: 'shopping_added',
+  TASK_COMPLETED: 'task_completed',
+  CLIFFORD_ASSIGNED: 'clifford_assigned'
 };

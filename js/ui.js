@@ -90,7 +90,16 @@ const translations = {
     syncNow: 'Sync now',
     justNow: 'Just now',
     secondsAgo: '{n}s ago',
-    minutesAgo: '{n}m ago'
+    minutesAgo: '{n}m ago',
+    notifications: 'Notifications',
+    noNotifications: 'No notifications',
+    markAllRead: 'Mark all as read',
+    notificationSettings: 'Notification Settings',
+    taskAssignedNotif: 'Task assignments',
+    shoppingAddedNotif: 'Shopping list updates',
+    taskCompletedNotif: 'Task completions',
+    cliffordAssignedNotif: 'Kid task assignments',
+    notificationPrefsUpdated: 'Notification settings saved!'
   },
   af: {
     appName: 'Thibault',
@@ -175,7 +184,16 @@ const translations = {
     syncNow: 'Sinkroniseer nou',
     justNow: 'Sopas',
     secondsAgo: '{n}s gelede',
-    minutesAgo: '{n}m gelede'
+    minutesAgo: '{n}m gelede',
+    notifications: 'Kennisgewings',
+    noNotifications: 'Geen kennisgewings',
+    markAllRead: 'Merk alles as gelees',
+    notificationSettings: 'Kennisgewing Instellings',
+    taskAssignedNotif: 'Taak toewysings',
+    shoppingAddedNotif: 'Inkopielys opdaterings',
+    taskCompletedNotif: 'Taak voltooiings',
+    cliffordAssignedNotif: 'Kind taak toewysings',
+    notificationPrefsUpdated: 'Kennisgewing instellings gestoor!'
   }
 };
 
@@ -234,11 +252,13 @@ class UIManager {
         this.render();
       }
 
-      // Re-render on data changes (shopping, tasks, clifford, quickAdd)
+      // Re-render on data changes (shopping, tasks, clifford, quickAdd, notifications)
       if (state.shopping !== prevState?.shopping ||
           state.tasks !== prevState?.tasks ||
           state.clifford !== prevState?.clifford ||
-          JSON.stringify(state.quickAdd) !== JSON.stringify(prevState?.quickAdd)) {
+          JSON.stringify(state.quickAdd) !== JSON.stringify(prevState?.quickAdd) ||
+          state.notifications !== prevState?.notifications ||
+          state.showNotificationPanel !== prevState?.showNotificationPanel) {
         this.render();
       }
 
@@ -410,15 +430,25 @@ class UIManager {
    */
   renderMainApp() {
     const view = store.getCurrentView();
+    const unreadCount = store.getUnreadCount();
+    const showPanel = store.getShowNotificationPanel();
+
     return `
       <div class="app-container">
         <div class="status-bar">
           <div class="connection-indicator" id="connection-indicator"></div>
-          <div class="sync-indicator" id="sync-indicator" data-action="force-sync">
-            <span class="sync-icon" id="sync-icon">↻</span>
-            <span class="sync-text" id="sync-text">${this.t('syncNow')}</span>
+          <div class="status-bar-right">
+            <div class="notification-bell" data-action="toggle-notification-panel">
+              <span class="bell-icon">🔔</span>
+              ${unreadCount > 0 ? `<span class="notification-badge">${unreadCount > 9 ? '9+' : unreadCount}</span>` : ''}
+            </div>
+            <div class="sync-indicator" id="sync-indicator" data-action="force-sync">
+              <span class="sync-icon" id="sync-icon">↻</span>
+              <span class="sync-text" id="sync-text">${this.t('syncNow')}</span>
+            </div>
           </div>
         </div>
+        ${showPanel ? this.renderNotificationPanel() : ''}
         <div class="app-content" id="app-content">
           <div class="pull-to-refresh-indicator" id="pull-indicator">
             <div class="pull-icon">↓</div>
@@ -431,6 +461,87 @@ class UIManager {
         </nav>
       </div>
     `;
+  }
+
+  /**
+   * Render notification panel
+   */
+  renderNotificationPanel() {
+    const notifications = store.getNotifications();
+    const unreadCount = store.getUnreadCount();
+
+    return `
+      <div class="notification-panel-overlay" data-action="close-notification-panel">
+        <div class="notification-panel">
+          <div class="notification-panel-header">
+            <h3>${this.t('notifications')}</h3>
+            ${unreadCount > 0 ? `
+              <button class="btn btn-secondary btn-sm" data-action="mark-all-read">
+                ${this.t('markAllRead')}
+              </button>
+            ` : ''}
+          </div>
+          <div class="notification-list">
+            ${notifications.length === 0 ? `
+              <div class="notification-empty">
+                <span class="empty-icon">🔔</span>
+                <p>${this.t('noNotifications')}</p>
+              </div>
+            ` : notifications.slice(0, 20).map(notif => this.renderNotificationItem(notif)).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Render a single notification item
+   */
+  renderNotificationItem(notif) {
+    const timeAgo = this.getTimeAgo(notif.created_at);
+    const iconMap = {
+      'task_assigned': '📋',
+      'shopping_added': '🛒',
+      'task_completed': '✅',
+      'clifford_assigned': '👶'
+    };
+    const icon = iconMap[notif.type] || '🔔';
+
+    return `
+      <div class="notification-item ${notif.read ? 'read' : 'unread'}"
+           data-id="${notif.id}"
+           data-action="notification-click"
+           data-related-table="${notif.related_table || ''}"
+           data-related-id="${notif.related_item_id || ''}">
+        <div class="notification-icon">${icon}</div>
+        <div class="notification-content">
+          <div class="notification-message">${this.escapeHtml(notif.message || notif.title)}</div>
+          <div class="notification-time">${timeAgo}</div>
+        </div>
+        <button class="notification-dismiss" data-action="dismiss-notification" data-id="${notif.id}">×</button>
+      </div>
+    `;
+  }
+
+  /**
+   * Get human-readable time ago string
+   */
+  getTimeAgo(dateString) {
+    const date = new Date(dateString);
+    const now = new Date();
+    const seconds = Math.floor((now - date) / 1000);
+
+    if (seconds < 60) return this.t('justNow');
+    if (seconds < 3600) {
+      const mins = Math.floor(seconds / 60);
+      return this.t('minutesAgo').replace('{n}', mins);
+    }
+    if (seconds < 86400) {
+      const hours = Math.floor(seconds / 3600);
+      return `${hours}h ago`;
+    }
+    const days = Math.floor(seconds / 86400);
+    return `${days}d ago`;
   }
 
   /**
@@ -1080,11 +1191,64 @@ class UIManager {
           </div>
         ` : ''}
 
+        ${this.renderNotificationSettings()}
+
         <div class="settings-section">
           <button class="btn btn-danger" data-action="sign-out">${this.t('signOut')}</button>
         </div>
 
         <div id="add-form-container"></div>
+      </div>
+    `;
+  }
+
+  /**
+   * Render notification settings section
+   */
+  renderNotificationSettings() {
+    const prefs = store.getNotificationPreferences();
+
+    return `
+      <div class="settings-section">
+        <h3>${this.t('notificationSettings')}</h3>
+        <div class="notification-prefs-list">
+          <label class="notification-pref-item">
+            <span>${this.t('taskAssignedNotif')}</span>
+            <input
+              type="checkbox"
+              data-action="toggle-notification-pref"
+              data-pref="task_assigned"
+              ${prefs.task_assigned ? 'checked' : ''}
+            />
+          </label>
+          <label class="notification-pref-item">
+            <span>${this.t('shoppingAddedNotif')}</span>
+            <input
+              type="checkbox"
+              data-action="toggle-notification-pref"
+              data-pref="shopping_added"
+              ${prefs.shopping_added ? 'checked' : ''}
+            />
+          </label>
+          <label class="notification-pref-item">
+            <span>${this.t('taskCompletedNotif')}</span>
+            <input
+              type="checkbox"
+              data-action="toggle-notification-pref"
+              data-pref="task_completed"
+              ${prefs.task_completed ? 'checked' : ''}
+            />
+          </label>
+          <label class="notification-pref-item">
+            <span>${this.t('cliffordAssignedNotif')}</span>
+            <input
+              type="checkbox"
+              data-action="toggle-notification-pref"
+              data-pref="clifford_assigned"
+              ${prefs.clifford_assigned ? 'checked' : ''}
+            />
+          </label>
+        </div>
       </div>
     `;
   }
@@ -1356,6 +1520,29 @@ class UIManager {
       case 'force-sync':
         await this.forceSync();
         break;
+
+      case 'toggle-notification-panel':
+        store.toggleNotificationPanel();
+        break;
+
+      case 'close-notification-panel':
+        store.setShowNotificationPanel(false);
+        break;
+
+      case 'mark-all-read':
+        e.stopPropagation();
+        await this.markAllNotificationsRead();
+        break;
+
+      case 'notification-click':
+        e.stopPropagation();
+        await this.handleNotificationClick(target);
+        break;
+
+      case 'dismiss-notification':
+        e.stopPropagation();
+        await this.dismissNotification(target.dataset.id);
+        break;
     }
   }
 
@@ -1510,6 +1697,8 @@ class UIManager {
       } else {
         store.setSortPreference(view, sortValue);
       }
+    } else if (action === 'toggle-notification-pref') {
+      this.toggleNotificationPreference(target.dataset.pref, target.checked);
     }
   }
 
@@ -2421,6 +2610,57 @@ class UIManager {
       store.setLoading(false);
       this.showToast(`Joined ${data.name}!`, 'success');
     }
+  }
+
+  /**
+   * Mark all notifications as read
+   */
+  async markAllNotificationsRead() {
+    await db.markAllNotificationsAsRead();
+    this.showToast('All notifications marked as read', 'success');
+  }
+
+  /**
+   * Handle notification click - navigate to related item
+   */
+  async handleNotificationClick(target) {
+    const notifId = target.dataset.id;
+    const relatedTable = target.dataset.relatedTable;
+
+    // Mark as read
+    await db.markNotificationAsRead(notifId);
+
+    // Navigate to related view
+    if (relatedTable) {
+      store.setShowNotificationPanel(false);
+      if (relatedTable === 'shopping') {
+        store.setCurrentView('shopping');
+      } else if (relatedTable === 'tasks') {
+        store.setCurrentView('tasks');
+        store.setTasksDrawer('household');
+      } else if (relatedTable === 'clifford') {
+        store.setCurrentView('clifford');
+      }
+    }
+  }
+
+  /**
+   * Dismiss a notification
+   */
+  async dismissNotification(notifId) {
+    await db.deleteNotification(notifId);
+  }
+
+  /**
+   * Toggle notification preference
+   */
+  async toggleNotificationPreference(pref, value) {
+    const currentPrefs = store.getNotificationPreferences();
+    const newPrefs = { ...currentPrefs, [pref]: value };
+
+    store.setNotificationPreferences(newPrefs);
+    await db.saveNotificationPreferences(newPrefs);
+    this.showToast(this.t('notificationPrefsUpdated'), 'success');
   }
 
   /**
