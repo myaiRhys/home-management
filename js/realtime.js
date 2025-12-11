@@ -1,6 +1,7 @@
 import { supabase, authManager } from './auth.js';
 import { store } from './store.js';
 import { Tables, RECONNECT_DELAY } from './config.js';
+import { ui } from './ui.js';
 
 /**
  * Realtime Subscription Manager
@@ -41,7 +42,9 @@ class RealtimeManager {
         db.loadTasks(),
         db.loadClifford(),
         db.loadQuickAdd(),
-        db.loadHouseholdMembers()
+        db.loadHouseholdMembers(),
+        db.loadNotifications(),
+        db.loadNotificationPreferences()
       ]);
       console.log('[Realtime] Data reload complete');
     } catch (error) {
@@ -232,6 +235,98 @@ class RealtimeManager {
         await db.loadHouseholdMembers();
       });
     });
+
+    // Notifications - subscribe for this household
+    this.subscribeToNotifications(householdId);
+  }
+
+  /**
+   * Subscribe to notifications for the current user
+   */
+  subscribeToNotifications(householdId) {
+    const user = authManager.getCurrentUser();
+    if (!user) return;
+
+    const tableName = Tables.NOTIFICATIONS;
+
+    if (this.channels.has(tableName)) {
+      console.log(`[Realtime] Already subscribed to ${tableName}`);
+      return;
+    }
+
+    console.log(`[Realtime] Subscribing to notifications for user ${user.id} in household ${householdId}`);
+
+    try {
+      const channel = supabase
+        .channel(`${tableName}_${user.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: tableName,
+            filter: `household_id=eq.${householdId}`
+          },
+          async (payload) => {
+            console.log('[Realtime] New notification:', payload);
+            const notification = payload.new;
+
+            // Only show if it's for this user OR it's a broadcast (to_user_id is null)
+            if (notification.to_user_id === user.id || notification.to_user_id === null) {
+              // Don't show notifications from yourself
+              if (notification.from_user_id !== user.id) {
+                // Add to store
+                store.addNotification(notification);
+
+                // Show toast notification
+                if (typeof ui !== 'undefined' && ui.showToast) {
+                  ui.showToast(notification.message || notification.title, 'info');
+                }
+              }
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: tableName,
+            filter: `household_id=eq.${householdId}`
+          },
+          (payload) => {
+            console.log('[Realtime] Notification updated:', payload);
+            this.debouncedReload('notifications', async () => {
+              const { db } = await import('./database.js');
+              await db.loadNotifications();
+            });
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'DELETE',
+            schema: 'public',
+            table: tableName,
+            filter: `household_id=eq.${householdId}`
+          },
+          (payload) => {
+            console.log('[Realtime] Notification deleted:', payload);
+            store.removeNotification(payload.old.id);
+          }
+        )
+        .subscribe((status, error) => {
+          if (error) {
+            console.error(`[Realtime] ${tableName} subscription error:`, error);
+          } else {
+            console.log(`[Realtime] ${tableName} status:`, status);
+          }
+        });
+
+      this.channels.set(tableName, channel);
+    } catch (error) {
+      console.error(`[Realtime] Failed to subscribe to ${tableName}:`, error);
+    }
   }
 }
 

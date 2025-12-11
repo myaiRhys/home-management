@@ -23,6 +23,16 @@ class Store {
         clifford: []
       },
 
+      // Notifications
+      notifications: [],
+      notificationPreferences: {
+        task_assigned: true,
+        shopping_added: true,
+        task_completed: false,
+        clifford_assigned: true
+      },
+      showNotificationPanel: false,
+
       // UI State
       currentView: 'dashboard', // dashboard, shopping, tasks, clifford, settings
       tasksDrawer: 'household', // 'household' or 'personal'
@@ -157,6 +167,12 @@ class Store {
         this.state.sortPreferences = JSON.parse(sortPreferences);
       }
 
+      // Notification preferences
+      const notificationPrefs = localStorage.getItem(STORAGE_KEYS.NOTIFICATION_PREFS);
+      if (notificationPrefs) {
+        this.state.notificationPreferences = JSON.parse(notificationPrefs);
+      }
+
     } catch (error) {
       console.error('Error loading persisted state:', error);
     }
@@ -180,6 +196,9 @@ class Store {
 
       // Persist sort preferences
       localStorage.setItem('thibault_sort_preferences', JSON.stringify(this.state.sortPreferences));
+
+      // Persist notification preferences
+      localStorage.setItem(STORAGE_KEYS.NOTIFICATION_PREFS, JSON.stringify(this.state.notificationPreferences));
     } catch (error) {
       console.error('Error persisting state:', error);
     }
@@ -200,7 +219,9 @@ class Store {
         shopping: [],
         tasks: [],
         clifford: []
-      }
+      },
+      notifications: [],
+      showNotificationPanel: false
     });
 
     localStorage.removeItem(STORAGE_KEYS.USER);
@@ -338,6 +359,71 @@ class Store {
         [view]: sort
       }
     });
+  }
+
+  // Notification getters
+  getNotifications() {
+    return this.state.notifications;
+  }
+
+  getUnreadNotifications() {
+    return this.state.notifications.filter(n => !n.read);
+  }
+
+  getUnreadCount() {
+    return this.state.notifications.filter(n => !n.read).length;
+  }
+
+  getNotificationPreferences() {
+    return this.state.notificationPreferences;
+  }
+
+  getShowNotificationPanel() {
+    return this.state.showNotificationPanel;
+  }
+
+  // Notification setters
+  setNotifications(notifications) {
+    this.setState({ notifications });
+  }
+
+  addNotification(notification) {
+    const notifications = [notification, ...this.state.notifications];
+    this.setState({ notifications });
+  }
+
+  markNotificationAsRead(notificationId) {
+    const notifications = this.state.notifications.map(n =>
+      n.id === notificationId ? { ...n, read: true } : n
+    );
+    this.setState({ notifications });
+  }
+
+  markAllNotificationsAsRead() {
+    const notifications = this.state.notifications.map(n => ({ ...n, read: true }));
+    this.setState({ notifications });
+  }
+
+  removeNotification(notificationId) {
+    const notifications = this.state.notifications.filter(n => n.id !== notificationId);
+    this.setState({ notifications });
+  }
+
+  setNotificationPreferences(preferences) {
+    this.setState({
+      notificationPreferences: {
+        ...this.state.notificationPreferences,
+        ...preferences
+      }
+    });
+  }
+
+  setShowNotificationPanel(show) {
+    this.setState({ showNotificationPanel: show });
+  }
+
+  toggleNotificationPanel() {
+    this.setState({ showNotificationPanel: !this.state.showNotificationPanel });
   }
 }
 
