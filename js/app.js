@@ -5,6 +5,7 @@ import { queueManager } from './queue.js';
 import { connectionManager } from './connection.js';
 import { store } from './store.js';
 import { ui } from './ui.js';
+import { syncManager } from './sync.js';
 
 /**
  * Main App
@@ -53,6 +54,9 @@ class App {
 
         // Subscribe to realtime updates
         realtimeManager.subscribeToHousehold(household.id);
+
+        // Initialize sync manager (periodic polling fallback)
+        syncManager.initialize();
 
         // Process any queued operations
         queueManager.processQueue();
@@ -141,6 +145,10 @@ class App {
 
       // Load all data for the new household
       await this.loadData(householdId);
+
+      // Re-initialize sync manager for new household
+      syncManager.destroy();
+      syncManager.initialize();
 
       // Process any queued operations
       queueManager.processQueue();
@@ -336,3 +344,4 @@ window.app = app;
 window.store = store;
 window.db = db;
 window.auth = authManager;
+window.syncManager = syncManager;

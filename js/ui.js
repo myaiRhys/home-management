@@ -3,6 +3,7 @@ import { db } from './database.js';
 import { authManager } from './auth.js';
 import { queueManager } from './queue.js';
 import { connectionManager } from './connection.js';
+import { syncManager } from './sync.js';
 
 // Translations
 const translations = {
@@ -84,7 +85,12 @@ const translations = {
     pullToRefresh: 'Pull to refresh',
     releaseToRefresh: 'Release to refresh',
     refreshing: 'Refreshing...',
-    refreshDone: 'Done!'
+    refreshDone: 'Done!',
+    lastSync: 'Last sync',
+    syncNow: 'Sync now',
+    justNow: 'Just now',
+    secondsAgo: '{n}s ago',
+    minutesAgo: '{n}m ago'
   },
   af: {
     appName: 'Thibault',
@@ -164,7 +170,12 @@ const translations = {
     pullToRefresh: 'Trek om te verfris',
     releaseToRefresh: 'Laat los om te verfris',
     refreshing: 'Verfris...',
-    refreshDone: 'Klaar!'
+    refreshDone: 'Klaar!',
+    lastSync: 'Laaste sinkronisering',
+    syncNow: 'Sinkroniseer nou',
+    justNow: 'Sopas',
+    secondsAgo: '{n}s gelede',
+    minutesAgo: '{n}m gelede'
   }
 };
 
@@ -254,6 +265,9 @@ class UIManager {
 
     // Setup event delegation
     this.setupEventListeners();
+
+    // Start sync indicator updates
+    this.startSyncIndicatorUpdates();
   }
 
   /**
@@ -280,6 +294,9 @@ class UIManager {
 
     // Update connection indicator
     this.updateConnectionIndicator();
+
+    // Update sync indicator
+    this.updateSyncIndicator();
   }
 
   /**
@@ -395,7 +412,13 @@ class UIManager {
     const view = store.getCurrentView();
     return `
       <div class="app-container">
-        <div class="connection-indicator" id="connection-indicator"></div>
+        <div class="status-bar">
+          <div class="connection-indicator" id="connection-indicator"></div>
+          <div class="sync-indicator" id="sync-indicator" data-action="force-sync">
+            <span class="sync-icon" id="sync-icon">↻</span>
+            <span class="sync-text" id="sync-text">${this.t('syncNow')}</span>
+          </div>
+        </div>
         <div class="app-content" id="app-content">
           <div class="pull-to-refresh-indicator" id="pull-indicator">
             <div class="pull-icon">↓</div>
@@ -1138,6 +1161,64 @@ class UIManager {
   }
 
   /**
+   * Update sync indicator
+   */
+  updateSyncIndicator(syncing = false) {
+    const indicator = document.getElementById('sync-indicator');
+    const icon = document.getElementById('sync-icon');
+    const text = document.getElementById('sync-text');
+
+    if (!indicator || !icon || !text) return;
+
+    const status = syncManager.getStatus();
+
+    if (syncing || status.syncInProgress) {
+      indicator.classList.add('syncing');
+      text.textContent = this.t('syncing');
+    } else {
+      indicator.classList.remove('syncing');
+
+      // Show time since last sync
+      if (status.lastSyncTime) {
+        const seconds = Math.floor((Date.now() - status.lastSyncTime) / 1000);
+        if (seconds < 5) {
+          text.textContent = this.t('justNow');
+        } else if (seconds < 60) {
+          text.textContent = this.t('secondsAgo').replace('{n}', seconds);
+        } else {
+          const minutes = Math.floor(seconds / 60);
+          text.textContent = this.t('minutesAgo').replace('{n}', minutes);
+        }
+      } else {
+        text.textContent = this.t('syncNow');
+      }
+    }
+  }
+
+  /**
+   * Start sync indicator update interval
+   */
+  startSyncIndicatorUpdates() {
+    // Update sync indicator every 5 seconds to show elapsed time
+    if (this.syncIndicatorInterval) {
+      clearInterval(this.syncIndicatorInterval);
+    }
+
+    this.syncIndicatorInterval = setInterval(() => {
+      this.updateSyncIndicator();
+    }, 5000);
+
+    // Subscribe to sync events
+    syncManager.subscribe((event, data) => {
+      if (event === 'sync:start') {
+        this.updateSyncIndicator(true);
+      } else if (event === 'sync:complete' || event === 'sync:error') {
+        this.updateSyncIndicator(false);
+      }
+    });
+  }
+
+  /**
    * Show toast notification
    */
   showToast(message, type = 'info') {
@@ -1271,6 +1352,26 @@ class UIManager {
       case 'refresh-data':
         await this.refreshData(target);
         break;
+
+      case 'force-sync':
+        await this.forceSync();
+        break;
+    }
+  }
+
+  /**
+   * Force immediate sync
+   */
+  async forceSync() {
+    console.log('[UI] Force sync triggered');
+    this.updateSyncIndicator(true);
+
+    try {
+      await syncManager.forceSync();
+      this.showToast(this.t('refreshDone') || 'Synced!', 'success');
+    } catch (error) {
+      console.error('[UI] Force sync failed:', error);
+      this.showToast('Sync failed', 'error');
     }
   }
 
