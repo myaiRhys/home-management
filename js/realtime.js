@@ -38,8 +38,9 @@ class RealtimeManager {
         console.log('[Realtime] Waiting for auth refresh...');
         await refreshPromise;
       }
+      // Just reconnect subscriptions - don't force reload data
+      // Let the realtime subscriptions handle updates naturally
       await this.reconnectAll();
-      await this.reloadAllData();
     });
 
     // Start heartbeat monitoring
@@ -103,10 +104,10 @@ class RealtimeManager {
     this.heartbeatInterval = setInterval(() => {
       const timeSinceLastHeartbeat = Date.now() - this.lastHeartbeat;
 
-      // If no activity for more than 2x heartbeat interval, consider connection dead
+      // Only log heartbeat status, don't auto-reconnect
+      // Let visibility/focus events handle reconnection to avoid interrupting users
       if (timeSinceLastHeartbeat > this.HEARTBEAT_INTERVAL * 2) {
-        console.warn('[Realtime] Heartbeat timeout - possible silent disconnection');
-        this.reconnectAll();
+        console.warn(`[Realtime] No activity for ${timeSinceLastHeartbeat}ms (possible silent disconnection, will reconnect on next visibility change)`);
       } else {
         console.log(`[Realtime] Heartbeat OK (${timeSinceLastHeartbeat}ms since last activity)`);
       }
