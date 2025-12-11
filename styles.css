@@ -442,18 +442,26 @@ p {
 }
 
 /* ===========================
-   Connection Indicator
+   Status Bar (Connection + Sync)
    =========================== */
-.connection-indicator {
+.status-bar {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  text-align: center;
-  padding: 0.25rem;
-  font-size: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   z-index: 1000;
+  pointer-events: none;
+}
+
+.connection-indicator {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.7rem;
   transition: all var(--transition);
+  border-radius: 0 0 var(--radius) 0;
+  pointer-events: auto;
 }
 
 .connection-indicator.online {
@@ -471,6 +479,49 @@ p {
 .connection-indicator.syncing {
   background-color: var(--warning);
   color: var(--bg);
+}
+
+/* Sync Indicator */
+.sync-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.7rem;
+  background-color: var(--card);
+  color: var(--text-light);
+  border-radius: 0 0 0 var(--radius);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-right: none;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: all var(--transition);
+}
+
+.sync-indicator:hover {
+  background-color: var(--border);
+  color: var(--text);
+}
+
+.sync-indicator:active {
+  transform: scale(0.95);
+}
+
+.sync-icon {
+  font-size: 0.9rem;
+  display: inline-block;
+  transition: transform 0.3s ease;
+}
+
+.sync-indicator.syncing .sync-icon {
+  animation: spin 1s linear infinite;
+}
+
+.sync-indicator.syncing {
+  background-color: var(--primary);
+  color: white;
+  border-color: var(--primary);
 }
 
 /* ===========================
