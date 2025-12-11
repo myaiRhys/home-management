@@ -4,6 +4,9 @@ import { ConnectionState, RECONNECT_DELAY } from './config.js';
  * Connection State Machine
  * Manages network connectivity and Supabase connection state
  * Critical for iOS Safari reliability after backgrounding
+ *
+ * KEY PRINCIPLE: "Guilty until proven innocent"
+ * Always assume disconnection after backgrounding, especially on iOS
  */
 class ConnectionManager {
   constructor() {
@@ -11,6 +14,11 @@ class ConnectionManager {
     this.listeners = new Set();
     this.lastStateChange = Date.now();
     this.reconnectTimeout = null;
+
+    // Background tracking (iOS Safari kills WebSockets aggressively)
+    this.backgroundStartTime = null;
+    this.BACKGROUND_THRESHOLD = 5000; // 5 seconds - iOS kills connections quickly
+    this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
     // Initialize
     this.initialize();
@@ -29,6 +37,10 @@ class ConnectionManager {
 
     // Listen to page focus/blur
     window.addEventListener('focus', () => this.handleFocus());
+    window.addEventListener('blur', () => this.handleBlur());
+
+    // Listen to pageshow (iOS back/forward cache)
+    window.addEventListener('pageshow', (event) => this.handlePageShow(event));
 
     this.notifyListeners();
   }
@@ -111,23 +123,76 @@ class ConnectionManager {
   /**
    * Handle visibility change (critical for iOS)
    * When app comes back from background, we need to reconnect
+   * GUILTY UNTIL PROVEN INNOCENT: Always assume disconnection
    */
   async handleVisibilityChange() {
-    if (!document.hidden) {
-      console.log('[Connection] App became visible, reconnecting...');
+    if (document.hidden) {
+      // App going to background - track when
+      this.backgroundStartTime = Date.now();
+      console.log('[Connection] App going to background');
+    } else {
+      // App coming back from background
+      const backgroundDuration = this.backgroundStartTime
+        ? Date.now() - this.backgroundStartTime
+        : 0;
 
-      // Don't wait for reconnect to complete - do it in background
-      this.setState(ConnectionState.RECONNECTING);
-      this.attemptReconnect();
+      console.log(`[Connection] App became visible after ${backgroundDuration}ms in background`);
+
+      // AGGRESSIVE: On iOS, always reconnect. On other platforms, reconnect if backgrounded for >5s
+      const shouldFullReconnect = this.isIOS || backgroundDuration > this.BACKGROUND_THRESHOLD;
+
+      if (shouldFullReconnect) {
+        console.log('[Connection] Full reconnect required (iOS or long background)');
+        this.setState(ConnectionState.RECONNECTING);
+        this.attemptReconnect();
+      } else {
+        console.log('[Connection] Quick verification after short background');
+        // Trigger connection gate verification
+        window.dispatchEvent(new CustomEvent('connection:verify'));
+      }
+
+      this.backgroundStartTime = null;
     }
+  }
+
+  /**
+   * Handle window blur (app losing focus)
+   */
+  handleBlur() {
+    this.backgroundStartTime = Date.now();
+    console.log('[Connection] Window blur - starting background timer');
   }
 
   /**
    * Handle window focus (additional trigger)
    */
   handleFocus() {
-    if (navigator.onLine && this.state !== ConnectionState.CONNECTED) {
-      console.log('[Connection] Window focused, reconnecting...');
+    const backgroundDuration = this.backgroundStartTime
+      ? Date.now() - this.backgroundStartTime
+      : 0;
+
+    console.log(`[Connection] Window focused after ${backgroundDuration}ms`);
+
+    if (navigator.onLine) {
+      // AGGRESSIVE: On iOS, always reconnect when focusing
+      if (this.isIOS || backgroundDuration > this.BACKGROUND_THRESHOLD || this.state !== ConnectionState.CONNECTED) {
+        console.log('[Connection] Reconnecting on focus...');
+        this.setState(ConnectionState.RECONNECTING);
+        this.attemptReconnect();
+      }
+    }
+
+    this.backgroundStartTime = null;
+  }
+
+  /**
+   * Handle pageshow event (iOS back/forward cache)
+   * Critical for iOS Safari which uses bfcache
+   */
+  handlePageShow(event) {
+    if (event.persisted) {
+      // Page was loaded from bfcache
+      console.log('[Connection] Page restored from bfcache - forcing reconnect');
       this.setState(ConnectionState.RECONNECTING);
       this.attemptReconnect();
     }

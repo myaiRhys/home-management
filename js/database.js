@@ -2,6 +2,7 @@ import { supabase, authManager } from './auth.js';
 import { store } from './store.js';
 import { connectionManager } from './connection.js';
 import { queueManager } from './queue.js';
+import { connectionGate } from './connection-gate.js';
 import { DB_OPERATION_TIMEOUT, MAX_RETRY_ATTEMPTS, Tables, OperationType, INVITE_CODE_LENGTH, NotificationType } from './config.js';
 
 /**
@@ -80,16 +81,19 @@ class DatabaseManager {
    */
   async insert(table, data, shouldQueue = true) {
     try {
-      const result = await this.executeWithTimeout(async () => {
-        const { data: inserted, error } = await supabase
-          .from(table)
-          .insert(data)
-          .select()
-          .single();
+      // Wrap with connection gate
+      const result = await connectionGate.execute(async () => {
+        return await this.executeWithTimeout(async () => {
+          const { data: inserted, error } = await supabase
+            .from(table)
+            .insert(data)
+            .select()
+            .single();
 
-        if (error) throw error;
-        return inserted;
-      });
+          if (error) throw error;
+          return inserted;
+        });
+      }, `insert into ${table}`);
 
       return { data: result, error: null };
 
@@ -103,6 +107,8 @@ class DatabaseManager {
         this.dispatchError('Save timed out - please try again', error);
       } else if (error.message?.includes('JWT') || error.message?.includes('auth')) {
         this.dispatchError('Session expired - please refresh the page', error);
+      } else if (error.message?.includes('Connection not ready')) {
+        this.dispatchError('Connection not ready - please wait a moment and try again', error);
       } else if (!navigator.onLine) {
         this.dispatchError('You are offline - please try again when connected', error);
       } else {
@@ -124,17 +130,20 @@ class DatabaseManager {
         updated_at: new Date().toISOString()
       };
 
-      const result = await this.executeWithTimeout(async () => {
-        const { data: updated, error } = await supabase
-          .from(table)
-          .update(updateData)
-          .eq('id', id)
-          .select()
-          .single();
+      // Wrap with connection gate
+      const result = await connectionGate.execute(async () => {
+        return await this.executeWithTimeout(async () => {
+          const { data: updated, error } = await supabase
+            .from(table)
+            .update(updateData)
+            .eq('id', id)
+            .select()
+            .single();
 
-        if (error) throw error;
-        return updated;
-      });
+          if (error) throw error;
+          return updated;
+        });
+      }, `update ${table}`);
 
       return { data: result, error: null };
 
@@ -146,6 +155,8 @@ class DatabaseManager {
         this.dispatchError('Unable to update - permission denied', error);
       } else if (error.message?.includes('JWT') || error.message?.includes('auth')) {
         this.dispatchError('Session expired - please refresh the page', error);
+      } else if (error.message?.includes('Connection not ready')) {
+        this.dispatchError('Connection not ready - please wait a moment and try again', error);
       }
 
       if (shouldQueue && this.shouldQueue(error)) {
@@ -165,15 +176,18 @@ class DatabaseManager {
    */
   async delete(table, id, shouldQueue = true) {
     try {
-      const result = await this.executeWithTimeout(async () => {
-        const { error } = await supabase
-          .from(table)
-          .delete()
-          .eq('id', id);
+      // Wrap with connection gate
+      const result = await connectionGate.execute(async () => {
+        return await this.executeWithTimeout(async () => {
+          const { error } = await supabase
+            .from(table)
+            .delete()
+            .eq('id', id);
 
-        if (error) throw error;
-        return { id };
-      });
+          if (error) throw error;
+          return { id };
+        });
+      }, `delete from ${table}`);
 
       return { data: result, error: null };
 
@@ -185,6 +199,8 @@ class DatabaseManager {
         this.dispatchError('Unable to delete - permission denied', error);
       } else if (error.message?.includes('JWT') || error.message?.includes('auth')) {
         this.dispatchError('Session expired - please refresh the page', error);
+      } else if (error.message?.includes('Connection not ready')) {
+        this.dispatchError('Connection not ready - please wait a moment and try again', error);
       }
 
       if (shouldQueue && this.shouldQueue(error)) {
