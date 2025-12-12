@@ -1,28 +1,28 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  onAuthStateChanged
+} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { FIREBASE_CONFIG } from './config.js';
 import { store } from './store.js';
-import { connectionManager } from './connection.js';
 
-// Initialize Supabase client
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: false
-  }
-});
+// Initialize Firebase
+const app = initializeApp(FIREBASE_CONFIG);
+export const auth = getAuth(app);
+export const db = getFirestore(app);
 
 /**
  * Authentication Manager
- * Handles auth state and session management
+ * Handles auth state and session management with Firebase
  */
 class AuthManager {
   constructor() {
     this.initialized = false;
-    this.sessionRefreshTimeout = null;
-
-    // Listen for reconnection events to refresh session
-    window.addEventListener('connection:reconnect', () => this.refreshSession());
+    this.authStateUnsubscribe = null;
   }
 
   /**
@@ -35,59 +35,52 @@ class AuthManager {
 
     console.log('[Auth] Initializing...');
 
-    try {
-      // Get current session
-      const { data: { session }, error } = await supabase.auth.getSession();
-
-      if (error) {
-        console.error('[Auth] Error getting session:', error);
-        return { data: null, error };
-      }
-
-      if (session) {
-        console.log('[Auth] Session found');
-        await this.handleSession(session);
-        connectionManager.setConnected();
-      } else {
-        console.log('[Auth] No session found');
-      }
-
+    return new Promise((resolve) => {
       // Listen for auth state changes
-      supabase.auth.onAuthStateChange(async (event, session) => {
-        console.log('[Auth] State change:', event);
+      this.authStateUnsubscribe = onAuthStateChanged(auth, async (user) => {
+        console.log('[Auth] State change:', user ? 'signed in' : 'signed out');
 
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          await this.handleSession(session);
-          connectionManager.setConnected();
-        } else if (event === 'SIGNED_OUT') {
+        if (user) {
+          console.log('[Auth] User found:', user.uid);
+          await this.handleSession(user);
+        } else {
+          console.log('[Auth] No user found');
           this.handleSignOut();
         }
+
+        if (!this.initialized) {
+          this.initialized = true;
+          resolve({ data: user, error: null });
+        }
+      }, (error) => {
+        console.error('[Auth] Auth state error:', error);
+        if (!this.initialized) {
+          this.initialized = true;
+          resolve({ data: null, error });
+        }
       });
-
-      this.initialized = true;
-      return { data: session, error: null };
-
-    } catch (error) {
-      console.error('[Auth] Initialize error:', error);
-      return { data: null, error };
-    }
+    });
   }
 
   /**
    * Handle session (load user data)
    */
-  async handleSession(session) {
-    if (!session || !session.user) {
+  async handleSession(user) {
+    if (!user) {
       return;
     }
 
-    console.log('[Auth] Handling session for user:', session.user.id);
+    console.log('[Auth] Handling session for user:', user.uid);
 
     // Store user
-    store.setUser(session.user);
+    store.setUser({
+      id: user.uid,
+      email: user.email,
+      email_confirmed_at: user.emailVerified ? new Date().toISOString() : null
+    });
 
     // Load user's household
-    await this.loadUserHousehold(session.user.id);
+    await this.loadUserHousehold(user.uid);
   }
 
   /**
@@ -95,22 +88,33 @@ class AuthManager {
    */
   async loadUserHousehold(userId) {
     try {
-      // Get household membership
-      const { data: membership, error } = await supabase
-        .from('household_members')
-        .select('household_id, role, households(*)')
-        .eq('user_id', userId)
-        .single();
+      const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
 
-      if (error) {
-        console.error('[Auth] Error loading household:', error);
+      // Get household membership
+      const q = query(
+        collection(db, 'household_members'),
+        where('user_id', '==', userId)
+      );
+
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        console.log('[Auth] No household membership found');
         return;
       }
 
-      if (membership && membership.households) {
-        console.log('[Auth] Loaded household:', membership.households.id);
+      const membership = snapshot.docs[0].data();
+      const householdId = membership.household_id;
+
+      // Get household details
+      const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+      const householdDoc = await getDoc(doc(db, 'households', householdId));
+
+      if (householdDoc.exists()) {
+        console.log('[Auth] Loaded household:', householdId);
         store.setHousehold({
-          ...membership.households,
+          id: householdId,
+          ...householdDoc.data(),
           userRole: membership.role
         });
       }
@@ -130,51 +134,26 @@ class AuthManager {
   }
 
   /**
-   * Refresh session (critical for iOS backgrounding)
-   */
-  async refreshSession() {
-    console.log('[Auth] Refreshing session...');
-
-    try {
-      const { data: { session }, error } = await supabase.auth.refreshSession();
-
-      if (error) {
-        console.error('[Auth] Session refresh error:', error);
-        return { data: null, error };
-      }
-
-      if (session) {
-        console.log('[Auth] Session refreshed successfully');
-        await this.handleSession(session);
-      }
-
-      return { data: session, error: null };
-
-    } catch (error) {
-      console.error('[Auth] Session refresh failed:', error);
-      return { data: null, error };
-    }
-  }
-
-  /**
    * Sign up with email and password
    */
   async signUp(email, password) {
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password
-      });
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      console.log('[Auth] Sign up successful:', userCredential.user.uid);
 
-      if (error) {
-        return { data: null, error };
-      }
-
-      return { data, error: null };
+      return {
+        data: {
+          user: {
+            id: userCredential.user.uid,
+            email: userCredential.user.email
+          }
+        },
+        error: null
+      };
 
     } catch (error) {
       console.error('[Auth] Sign up error:', error);
-      return { data: null, error };
+      return { data: null, error: { message: error.message } };
     }
   }
 
@@ -183,20 +162,22 @@ class AuthManager {
    */
   async signIn(email, password) {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      console.log('[Auth] Sign in successful:', userCredential.user.uid);
 
-      if (error) {
-        return { data: null, error };
-      }
-
-      return { data, error: null };
+      return {
+        data: {
+          user: {
+            id: userCredential.user.uid,
+            email: userCredential.user.email
+          }
+        },
+        error: null
+      };
 
     } catch (error) {
       console.error('[Auth] Sign in error:', error);
-      return { data: null, error };
+      return { data: null, error: { message: error.message } };
     }
   }
 
@@ -205,19 +186,13 @@ class AuthManager {
    */
   async signOut() {
     try {
-      const { error } = await supabase.auth.signOut();
-
-      if (error) {
-        console.error('[Auth] Sign out error:', error);
-        return { error };
-      }
-
+      await firebaseSignOut(auth);
       this.handleSignOut();
       return { error: null };
 
     } catch (error) {
-      console.error('[Auth] Sign out failed:', error);
-      return { error };
+      console.error('[Auth] Sign out error:', error);
+      return { error: { message: error.message } };
     }
   }
 
@@ -233,6 +208,16 @@ class AuthManager {
    */
   getCurrentHousehold() {
     return store.getHousehold();
+  }
+
+  /**
+   * Cleanup
+   */
+  destroy() {
+    if (this.authStateUnsubscribe) {
+      this.authStateUnsubscribe();
+      this.authStateUnsubscribe = null;
+    }
   }
 }
 

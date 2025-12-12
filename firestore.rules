@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper function - check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function - check if user is household member
+    function isHouseholdMember(householdId) {
+      return exists(/databases/$(database)/documents/household_members/$(householdId + '_' + request.auth.uid));
+    }
+
+    // Helper function - check if user is household admin
+    function isHouseholdAdmin(householdId) {
+      let memberDoc = get(/databases/$(database)/documents/household_members/$(householdId + '_' + request.auth.uid));
+      return memberDoc.data.role == 'admin';
+    }
+
+    // Households - users can read their own, create new ones
+    match /households/{householdId} {
+      allow read: if isAuthenticated() && isHouseholdMember(householdId);
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && isHouseholdAdmin(householdId);
+      allow delete: if isAuthenticated() && isHouseholdAdmin(householdId);
+    }
+
+    // Household members - household members can read, admins can manage
+    match /household_members/{memberId} {
+      allow read: if isAuthenticated() && isHouseholdMember(resource.data.household_id);
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && isHouseholdAdmin(resource.data.household_id);
+      allow delete: if isAuthenticated() && isHouseholdAdmin(resource.data.household_id);
+    }
+
+    // Shopping - household members can manage
+    match /shopping/{itemId} {
+      allow read, create, update, delete: if isAuthenticated() && isHouseholdMember(resource.data.household_id);
+    }
+
+    // Tasks - household members can manage
+    match /tasks/{taskId} {
+      allow read, create, update, delete: if isAuthenticated() && isHouseholdMember(resource.data.household_id);
+    }
+
+    // Clifford - household members can manage
+    match /clifford/{itemId} {
+      allow read, create, update, delete: if isAuthenticated() && isHouseholdMember(resource.data.household_id);
+    }
+
+    // Quick Add - household members can manage
+    match /quick_add/{itemId} {
+      allow read, create, update, delete: if isAuthenticated() && isHouseholdMember(resource.data.household_id);
+    }
+
+    // Personal Tasks - user's own only
+    match /personal_tasks/{taskId} {
+      allow read, create, update, delete: if isAuthenticated() && request.auth.uid == resource.data.user_id;
+    }
+
+    // Profiles - users can read and update their own
+    match /profiles/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+  }
+}

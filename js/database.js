@@ -1,17 +1,37 @@
-import { supabase, authManager } from './auth.js';
+import { db, auth } from './auth.js';
+import {
+  collection,
+  doc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  serverTimestamp,
+  enableIndexedDbPersistence
+} from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { store } from './store.js';
-import { connectionManager } from './connection.js';
-import { queueManager } from './queue.js';
-import { DB_OPERATION_TIMEOUT, MAX_RETRY_ATTEMPTS, Tables, OperationType, INVITE_CODE_LENGTH } from './config.js';
+import { Tables, INVITE_CODE_LENGTH } from './config.js';
+
+// Enable offline persistence
+enableIndexedDbPersistence(db).catch((err) => {
+  if (err.code === 'failed-precondition') {
+    console.warn('[DB] Persistence failed: Multiple tabs open');
+  } else if (err.code === 'unimplemented') {
+    console.warn('[DB] Persistence not available in this browser');
+  }
+});
 
 /**
  * Database Operations Manager
- * Handles all CRUD operations with connection management
+ * Handles all CRUD operations with Firestore
  */
 class DatabaseManager {
   constructor() {
-    // Set queue executor
-    queueManager.setExecutor((operation) => this.executeQueuedOperation(operation));
+    console.log('[DB] Initialized with Firestore');
   }
 
   /**
@@ -34,86 +54,35 @@ class DatabaseManager {
   }
 
   /**
-   * Execute a database operation with timeout and error handling
-   */
-  async executeWithTimeout(operation, timeout = DB_OPERATION_TIMEOUT) {
-    return new Promise(async (resolve, reject) => {
-      // Set timeout
-      const timeoutId = setTimeout(() => {
-        reject(new Error('Operation timeout'));
-      }, timeout);
-
-      try {
-        const result = await operation();
-        clearTimeout(timeoutId);
-        resolve(result);
-      } catch (error) {
-        clearTimeout(timeoutId);
-        reject(error);
-      }
-    });
-  }
-
-  /**
-   * Execute queued operation
-   */
-  async executeQueuedOperation(operation) {
-    const { type, table, data } = operation;
-
-    switch (type) {
-      case OperationType.INSERT:
-        return await this.insert(table, data, false); // Don't queue again
-
-      case OperationType.UPDATE:
-        return await this.update(table, data.id, data, false);
-
-      case OperationType.DELETE:
-        return await this.delete(table, data.id, false);
-
-      default:
-        throw new Error(`Unknown operation type: ${type}`);
-    }
-  }
-
-  /**
    * Insert a record
    */
-  async insert(table, data, shouldQueue = true) {
+  async insert(tableName, data) {
     try {
-      const result = await this.executeWithTimeout(async () => {
-        const { data: inserted, error } = await supabase
-          .from(table)
-          .insert(data)
-          .select()
-          .single();
-
-        if (error) throw error;
-        return inserted;
+      const docRef = await addDoc(collection(db, tableName), {
+        ...data,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
       });
 
-      return { data: result, error: null };
+      const inserted = {
+        id: docRef.id,
+        ...data,
+        created_at: new Date().toISOString(), // For immediate use
+        updated_at: new Date().toISOString()
+      };
+
+      return { data: inserted, error: null };
 
     } catch (error) {
-      console.error(`[DB] Insert error on ${table}:`, error);
+      console.error(`[DB] Insert error on ${tableName}:`, error);
 
       // Detect and report specific error types
-      if (error.message?.includes('policy') || error.code === '42501') {
+      if (error.code === 'permission-denied') {
         this.dispatchError('Unable to save - permission denied. Please check your household membership.', error);
-      } else if (error.message?.includes('timeout')) {
-        this.dispatchError('Save timed out - will retry when connection improves', error);
-      } else if (error.message?.includes('JWT') || error.message?.includes('auth')) {
+      } else if (error.code === 'unauthenticated') {
         this.dispatchError('Session expired - please refresh the page', error);
       } else if (!navigator.onLine) {
         this.dispatchError('You are offline - changes will sync when connected', error);
-      }
-
-      // Queue for later if appropriate
-      if (shouldQueue && this.shouldQueue(error)) {
-        queueManager.enqueue({
-          type: OperationType.INSERT,
-          table,
-          data
-        });
       }
 
       return { data: null, error };
@@ -123,38 +92,29 @@ class DatabaseManager {
   /**
    * Update a record
    */
-  async update(table, id, data, shouldQueue = true) {
+  async update(tableName, id, data) {
     try {
-      const result = await this.executeWithTimeout(async () => {
-        const { data: updated, error } = await supabase
-          .from(table)
-          .update(data)
-          .eq('id', id)
-          .select()
-          .single();
-
-        if (error) throw error;
-        return updated;
+      await updateDoc(doc(db, tableName, id), {
+        ...data,
+        updated_at: serverTimestamp()
       });
 
-      return { data: result, error: null };
+      const updated = {
+        id,
+        ...data,
+        updated_at: new Date().toISOString()
+      };
+
+      return { data: updated, error: null };
 
     } catch (error) {
-      console.error(`[DB] Update error on ${table}:`, error);
+      console.error(`[DB] Update error on ${tableName}:`, error);
 
       // Detect and report specific error types
-      if (error.message?.includes('policy') || error.code === '42501') {
+      if (error.code === 'permission-denied') {
         this.dispatchError('Unable to update - permission denied', error);
-      } else if (error.message?.includes('JWT') || error.message?.includes('auth')) {
+      } else if (error.code === 'unauthenticated') {
         this.dispatchError('Session expired - please refresh the page', error);
-      }
-
-      if (shouldQueue && this.shouldQueue(error)) {
-        queueManager.enqueue({
-          type: OperationType.UPDATE,
-          table,
-          data: { ...data, id }
-        });
       }
 
       return { data: null, error };
@@ -164,36 +124,19 @@ class DatabaseManager {
   /**
    * Delete a record
    */
-  async delete(table, id, shouldQueue = true) {
+  async delete(tableName, id) {
     try {
-      const result = await this.executeWithTimeout(async () => {
-        const { error } = await supabase
-          .from(table)
-          .delete()
-          .eq('id', id);
-
-        if (error) throw error;
-        return { id };
-      });
-
-      return { data: result, error: null };
+      await deleteDoc(doc(db, tableName, id));
+      return { data: { id }, error: null };
 
     } catch (error) {
-      console.error(`[DB] Delete error on ${table}:`, error);
+      console.error(`[DB] Delete error on ${tableName}:`, error);
 
       // Detect and report specific error types
-      if (error.message?.includes('policy') || error.code === '42501') {
+      if (error.code === 'permission-denied') {
         this.dispatchError('Unable to delete - permission denied', error);
-      } else if (error.message?.includes('JWT') || error.message?.includes('auth')) {
+      } else if (error.code === 'unauthenticated') {
         this.dispatchError('Session expired - please refresh the page', error);
-      }
-
-      if (shouldQueue && this.shouldQueue(error)) {
-        queueManager.enqueue({
-          type: OperationType.DELETE,
-          table,
-          data: { id }
-        });
       }
 
       return { data: null, error };
@@ -203,48 +146,33 @@ class DatabaseManager {
   /**
    * Fetch records
    */
-  async fetch(table, filters = {}) {
+  async fetch(tableName, filters = {}) {
     try {
-      const result = await this.executeWithTimeout(async () => {
-        let query = supabase.from(table).select('*');
+      let q = collection(db, tableName);
+      const constraints = [];
 
-        // Apply filters
-        Object.entries(filters).forEach(([key, value]) => {
-          query = query.eq(key, value);
-        });
-
-        // Order by created_at desc
-        query = query.order('created_at', { ascending: false });
-
-        const { data, error } = await query;
-
-        if (error) throw error;
-        return data;
+      // Apply filters
+      Object.entries(filters).forEach(([key, value]) => {
+        constraints.push(where(key, '==', value));
       });
 
-      return { data: result, error: null };
+      // Order by created_at desc
+      constraints.push(orderBy('created_at', 'desc'));
+
+      q = query(q, ...constraints);
+
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      return { data, error: null };
 
     } catch (error) {
-      console.error(`[DB] Fetch error on ${table}:`, error);
+      console.error(`[DB] Fetch error on ${tableName}:`, error);
       return { data: null, error };
     }
-  }
-
-  /**
-   * Determine if operation should be queued
-   */
-  shouldQueue(error) {
-    // Queue on network errors, timeouts, or connection issues
-    if (!navigator.onLine) return true;
-    if (error.message?.includes('timeout')) return true;
-    if (error.message?.includes('network')) return true;
-    if (error.message?.includes('fetch')) return true;
-
-    // Don't queue on validation errors or auth errors
-    if (error.code?.startsWith('23')) return false; // PostgreSQL constraint violations
-    if (error.message?.includes('auth')) return false;
-
-    return false;
   }
 
   // ============================
@@ -255,7 +183,7 @@ class DatabaseManager {
    * Create a new household
    */
   async createHousehold(name) {
-    const user = authManager.getCurrentUser();
+    const user = auth.currentUser;
     if (!user) {
       return { data: null, error: new Error('Not authenticated') };
     }
@@ -268,7 +196,7 @@ class DatabaseManager {
       const { data: household, error: householdError } = await this.insert(Tables.HOUSEHOLDS, {
         name,
         invite_code: inviteCode,
-        created_by: user.id,
+        created_by: user.uid,
         custom_clifford_name: 'Clifford'
       });
 
@@ -279,7 +207,7 @@ class DatabaseManager {
       // Add creator as admin member
       const { error: memberError } = await this.insert(Tables.HOUSEHOLD_MEMBERS, {
         household_id: household.id,
-        user_id: user.id,
+        user_id: user.uid,
         role: 'admin'
       });
 
@@ -302,26 +230,34 @@ class DatabaseManager {
    * Join household with invite code
    */
   async joinHousehold(inviteCode) {
-    const user = authManager.getCurrentUser();
+    const user = auth.currentUser;
     if (!user) {
       return { data: null, error: new Error('Not authenticated') };
     }
 
     try {
-      // Call RPC function to get household
-      const { data: household, error: fetchError } = await supabase
-        .rpc('get_household_by_invite_code', { code: inviteCode });
+      // Find household by invite code
+      const q = query(
+        collection(db, Tables.HOUSEHOLDS),
+        where('invite_code', '==', inviteCode)
+      );
 
-      if (fetchError || !household || household.length === 0) {
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
         return { data: null, error: new Error('Invalid invite code') };
       }
 
-      const householdData = household[0];
+      const householdDoc = snapshot.docs[0];
+      const householdData = {
+        id: householdDoc.id,
+        ...householdDoc.data()
+      };
 
       // Add user as member
       const { error: memberError } = await this.insert(Tables.HOUSEHOLD_MEMBERS, {
         household_id: householdData.id,
-        user_id: user.id,
+        user_id: user.uid,
         role: 'member'
       });
 
@@ -344,95 +280,48 @@ class DatabaseManager {
    * Load household members
    */
   async loadHouseholdMembers() {
-    const household = authManager.getCurrentHousehold();
+    const household = store.getHousehold();
     if (!household) {
       return { data: [], error: null };
     }
 
     try {
-      const result = await this.executeWithTimeout(async () => {
-        // Try to get household members with profiles first
-        let members = null;
-        let membersError = null;
+      // Get household members
+      const q = query(
+        collection(db, Tables.HOUSEHOLD_MEMBERS),
+        where('household_id', '==', household.id),
+        orderBy('created_at', 'asc')
+      );
 
-        // Get household members
-        const response = await supabase
-          .from(Tables.HOUSEHOLD_MEMBERS)
-          .select('id, household_id, user_id, role, created_at')
-          .eq('household_id', household.id)
-          .order('created_at', { ascending: true });
+      const snapshot = await getDocs(q);
+      const members = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
 
-        members = response.data;
-        membersError = response.error;
+      // Try to fetch user profiles separately
+      const currentUserId = auth.currentUser?.uid;
 
-        // If we got members, try to fetch profiles separately
-        if (members && members.length > 0 && !membersError) {
-          try {
-            const userIds = members.map(m => m.user_id);
-            const { data: profiles, error: profilesError } = await supabase
-              .from('profiles')
-              .select('id, display_name')
-              .in('id', userIds);
+      const membersWithUsers = members.map((member, index) => {
+        const displayName = member.user_id === currentUserId ? 'You' : `Member ${index + 1}`;
 
-            if (!profilesError && profiles) {
-              // Map profiles to members
-              const profilesMap = {};
-              profiles.forEach(p => {
-                profilesMap[p.id] = p;
-              });
-
-              members = members.map(member => ({
-                ...member,
-                profiles: profilesMap[member.user_id]
-              }));
-
-              console.log('[DB] Loaded profiles:', profiles);
-            } else if (profilesError) {
-              console.log('[DB] Profiles query error (table may not exist):', profilesError);
-            }
-          } catch (profilesError) {
-            console.log('[DB] Could not load profiles, continuing without them');
+        return {
+          id: member.id,
+          household_id: member.household_id,
+          user_id: member.user_id,
+          role: member.role,
+          created_at: member.created_at,
+          users: {
+            id: member.user_id,
+            email: displayName
           }
-        }
-
-        if (membersError) {
-          console.error('[DB] Error loading members:', membersError);
-          throw membersError;
-        }
-
-        console.log('[DB] Loaded members:', members);
-
-        const currentUserId = authManager.getCurrentUser()?.id;
-
-        // Map to expected structure with display names
-        const membersWithUsers = members.map((member, index) => {
-          const displayName = member.profiles?.display_name ||
-                            (member.user_id === currentUserId ? 'You' : `Member ${index + 1}`);
-
-          console.log('[DB] Member:', member.user_id, 'Display name:', displayName);
-
-          return {
-            id: member.id,
-            household_id: member.household_id,
-            user_id: member.user_id,
-            role: member.role,
-            created_at: member.created_at,
-            users: {
-              id: member.user_id,
-              email: displayName
-            }
-          };
-        });
-
-        return membersWithUsers;
+        };
       });
 
-      if (result) {
-        console.log('[DB] Setting household members in store:', result);
-        store.setHouseholdMembers(result);
-      }
+      console.log('[DB] Setting household members in store:', membersWithUsers);
+      store.setHouseholdMembers(membersWithUsers);
 
-      return { data: result, error: null };
+      return { data: membersWithUsers, error: null };
 
     } catch (error) {
       console.error('[DB] Load household members error:', error);
@@ -444,28 +333,22 @@ class DatabaseManager {
    * Update user profile display name
    */
   async updateDisplayName(displayName) {
-    const user = authManager.getCurrentUser();
+    const user = auth.currentUser;
     if (!user) {
       return { error: { message: 'Not authenticated' } };
     }
 
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .upsert({
-          id: user.id,
-          display_name: displayName,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'id'
-        });
-
-      if (error) throw error;
+      const profileRef = doc(db, 'profiles', user.uid);
+      await updateDoc(profileRef, {
+        display_name: displayName,
+        updated_at: serverTimestamp()
+      });
 
       // Reload household members to show updated name
       await this.loadHouseholdMembers();
 
-      return { data, error: null };
+      return { data: null, error: null };
     } catch (error) {
       console.error('[DB] Update display name error:', error);
       return { data: null, error };
@@ -476,7 +359,7 @@ class DatabaseManager {
    * Update household custom clifford name
    */
   async updateHouseholdCustomName(customName) {
-    const household = authManager.getCurrentHousehold();
+    const household = store.getHousehold();
     if (!household) {
       return { data: null, error: new Error('No household') };
     }
@@ -497,7 +380,7 @@ class DatabaseManager {
    * Remove household member (admin only)
    */
   async removeHouseholdMember(memberId) {
-    const household = authManager.getCurrentHousehold();
+    const household = store.getHousehold();
     if (!household || household.userRole !== 'admin') {
       return { data: null, error: new Error('Not authorized') };
     }
@@ -522,8 +405,8 @@ class DatabaseManager {
   // ============================
 
   async addShoppingItem(name, notes = '', quantity = 1) {
-    const household = authManager.getCurrentHousehold();
-    const user = authManager.getCurrentUser();
+    const household = store.getHousehold();
+    const user = auth.currentUser;
     if (!household) {
       return { data: null, error: new Error('No household') };
     }
@@ -534,13 +417,12 @@ class DatabaseManager {
       notes,
       quantity: quantity || 1,
       completed: false,
-      created_by: user?.id || null,
-      created_at: new Date().toISOString()
+      created_by: user?.uid || null
     };
 
     // Optimistic update
     const tempId = `temp_${Date.now()}`;
-    const tempItem = { ...item, id: tempId };
+    const tempItem = { ...item, id: tempId, created_at: new Date().toISOString() };
     store.setShopping([tempItem, ...store.getShopping()]);
 
     const { data, error } = await this.insert(Tables.SHOPPING, item);
@@ -550,9 +432,9 @@ class DatabaseManager {
       const shopping = store.getShopping().filter(i => i.id !== tempId);
       store.setShopping([data, ...shopping]);
     } else if (error) {
-      // Mark as pending
-      tempItem.pending = true;
-      store.setShopping(store.getShopping());
+      // Firestore offline persistence will handle retry
+      // Just keep the temp item for now
+      console.log('[DB] Insert queued for when online');
     }
 
     return { data, error };
@@ -566,14 +448,6 @@ class DatabaseManager {
     store.setShopping(shopping);
 
     const { data, error } = await this.update(Tables.SHOPPING, id, updates);
-
-    if (error) {
-      // Mark as pending
-      const updatedShopping = store.getShopping().map(item =>
-        item.id === id ? { ...item, pending: true } : item
-      );
-      store.setShopping(updatedShopping);
-    }
 
     return { data, error };
   }
@@ -589,7 +463,7 @@ class DatabaseManager {
   }
 
   async loadShopping() {
-    const household = authManager.getCurrentHousehold();
+    const household = store.getHousehold();
     if (!household) {
       return { data: [], error: null };
     }
@@ -610,8 +484,8 @@ class DatabaseManager {
   // ============================
 
   async addTask(name, assignee = null, dueDate = null, notes = '') {
-    const household = authManager.getCurrentHousehold();
-    const user = authManager.getCurrentUser();
+    const household = store.getHousehold();
+    const user = auth.currentUser;
     if (!household) {
       return { data: null, error: new Error('No household') };
     }
@@ -623,13 +497,12 @@ class DatabaseManager {
       due_date: dueDate,
       notes,
       completed: false,
-      created_by: user?.id || null,
-      created_at: new Date().toISOString()
+      created_by: user?.uid || null
     };
 
     // Optimistic update
     const tempId = `temp_${Date.now()}`;
-    const tempTask = { ...task, id: tempId };
+    const tempTask = { ...task, id: tempId, created_at: new Date().toISOString() };
     store.setTasks([tempTask, ...store.getTasks()]);
 
     const { data, error } = await this.insert(Tables.TASKS, task);
@@ -637,9 +510,6 @@ class DatabaseManager {
     if (data) {
       const tasks = store.getTasks().filter(t => t.id !== tempId);
       store.setTasks([data, ...tasks]);
-    } else if (error) {
-      tempTask.pending = true;
-      store.setTasks(store.getTasks());
     }
 
     return { data, error };
@@ -652,13 +522,6 @@ class DatabaseManager {
     store.setTasks(tasks);
 
     const { data, error } = await this.update(Tables.TASKS, id, updates);
-
-    if (error) {
-      const updatedTasks = store.getTasks().map(task =>
-        task.id === id ? { ...task, pending: true } : task
-      );
-      store.setTasks(updatedTasks);
-    }
 
     return { data, error };
   }
@@ -673,7 +536,7 @@ class DatabaseManager {
   }
 
   async loadTasks() {
-    const household = authManager.getCurrentHousehold();
+    const household = store.getHousehold();
     if (!household) {
       return { data: [], error: null };
     }
@@ -694,8 +557,8 @@ class DatabaseManager {
   // ============================
 
   async addClifford(name, assignee = null, dueDate = null, notes = '') {
-    const household = authManager.getCurrentHousehold();
-    const user = authManager.getCurrentUser();
+    const household = store.getHousehold();
+    const user = auth.currentUser;
     if (!household) {
       return { data: null, error: new Error('No household') };
     }
@@ -707,12 +570,11 @@ class DatabaseManager {
       due_date: dueDate,
       notes,
       completed: false,
-      created_by: user?.id || null,
-      created_at: new Date().toISOString()
+      created_by: user?.uid || null
     };
 
     const tempId = `temp_${Date.now()}`;
-    const tempClifford = { ...clifford, id: tempId };
+    const tempClifford = { ...clifford, id: tempId, created_at: new Date().toISOString() };
     store.setClifford([tempClifford, ...store.getClifford()]);
 
     const { data, error } = await this.insert(Tables.CLIFFORD, clifford);
@@ -720,9 +582,6 @@ class DatabaseManager {
     if (data) {
       const cliffords = store.getClifford().filter(c => c.id !== tempId);
       store.setClifford([data, ...cliffords]);
-    } else if (error) {
-      tempClifford.pending = true;
-      store.setClifford(store.getClifford());
     }
 
     return { data, error };
@@ -735,13 +594,6 @@ class DatabaseManager {
     store.setClifford(cliffords);
 
     const { data, error } = await this.update(Tables.CLIFFORD, id, updates);
-
-    if (error) {
-      const updatedCliffords = store.getClifford().map(clifford =>
-        clifford.id === id ? { ...clifford, pending: true } : clifford
-      );
-      store.setClifford(updatedCliffords);
-    }
 
     return { data, error };
   }
@@ -756,7 +608,7 @@ class DatabaseManager {
   }
 
   async loadClifford() {
-    const household = authManager.getCurrentHousehold();
+    const household = store.getHousehold();
     if (!household) {
       return { data: [], error: null };
     }
@@ -777,13 +629,13 @@ class DatabaseManager {
   // ============================
 
   async loadPersonalTasks() {
-    const user = authManager.getCurrentUser();
+    const user = auth.currentUser;
     if (!user) {
       return { data: [], error: null };
     }
 
     const { data, error } = await this.fetch(Tables.PERSONAL_TASKS, {
-      user_id: user.id
+      user_id: user.uid
     });
 
     if (!error && data) {
@@ -794,18 +646,17 @@ class DatabaseManager {
   }
 
   async addPersonalTask(name, dueDate, notes) {
-    const user = authManager.getCurrentUser();
+    const user = auth.currentUser;
     if (!user) {
       return { data: null, error: new Error('Not authenticated') };
     }
 
     const item = {
-      user_id: user.id,
+      user_id: user.uid,
       name,
       notes: notes || '',
       due_date: dueDate || null,
-      completed: false,
-      created_at: new Date().toISOString()
+      completed: false
     };
 
     const { data, error } = await this.insert(Tables.PERSONAL_TASKS, item);
@@ -819,10 +670,7 @@ class DatabaseManager {
   }
 
   async updatePersonalTask(id, updates) {
-    const { data, error} = await this.update(Tables.PERSONAL_TASKS, id, {
-      ...updates,
-      updated_at: new Date().toISOString()
-    });
+    const { data, error} = await this.update(Tables.PERSONAL_TASKS, id, updates);
 
     if (!error && data) {
       const current = store.getPersonalTasks();
@@ -859,7 +707,7 @@ class DatabaseManager {
   // ============================
 
   async loadQuickAdd() {
-    const household = authManager.getCurrentHousehold();
+    const household = store.getHousehold();
     if (!household) {
       return { data: [], error: null };
     }
@@ -883,7 +731,7 @@ class DatabaseManager {
   }
 
   async addQuickAddItem(type, name) {
-    const household = authManager.getCurrentHousehold();
+    const household = store.getHousehold();
     if (!household) {
       return { data: null, error: new Error('No household') };
     }

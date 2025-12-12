@@ -1,8 +1,6 @@
 import { authManager } from './auth.js';
 import { db } from './database.js';
 import { realtimeManager } from './realtime.js';
-import { queueManager } from './queue.js';
-import { connectionManager } from './connection.js';
 import { store } from './store.js';
 import { ui } from './ui.js';
 
@@ -46,14 +44,8 @@ class App {
       const household = authManager.getCurrentHousehold();
 
       if (user && household) {
-        // Load all data
-        await this.loadData(household.id);
-
-        // Subscribe to realtime updates
+        // Subscribe to realtime updates (Firestore handles initial data load)
         realtimeManager.subscribeToHousehold(household.id);
-
-        // Process any queued operations
-        queueManager.processQueue();
 
         // Set initial view
         store.setCurrentView('dashboard');
@@ -179,9 +171,7 @@ class App {
           navigator.vibrate(50);
         }
 
-        // Refresh data
-        await authManager.refreshSession();
-        await queueManager.processQueue();
+        // Refresh data (Firestore realtime handles most of this automatically)
         await this.reload();
       }
 
@@ -205,20 +195,6 @@ if (document.readyState === 'loading') {
 } else {
   app.initialize();
 }
-
-// Listen for connection events and reload data
-window.addEventListener('connection:reconnect', async () => {
-  console.log('[App] Reconnection detected, refreshing data...');
-
-  // Refresh auth session first
-  await authManager.refreshSession();
-
-  // Process queue
-  await queueManager.processQueue();
-
-  // Reload data
-  await app.reload();
-});
 
 // Listen for database error events and show toast notifications
 window.addEventListener('db:error', (event) => {
