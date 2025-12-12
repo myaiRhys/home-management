@@ -134,24 +134,29 @@ class App {
   /**
    * Switch to a new household (called after joining/creating)
    * Loads data and sets up realtime subscriptions
+   *
+   * ARCHITECTURE: Polling is primary, realtime is optional enhancement.
+   * Don't block on realtime - let it connect opportunistically.
    */
   async switchHousehold(householdId) {
     console.log('[App] Switching to household:', householdId);
 
     try {
-      // Reconnect realtime subscriptions for the new household
-      // This unsubscribes from old channels and subscribes to new ones
-      await realtimeManager.reconnectAll();
-
-      // Load all data for the new household
+      // Load all data for the new household (blocking - essential)
       await this.loadData(householdId);
 
-      // Re-initialize sync manager for new household
+      // Re-initialize sync manager for new household (blocking - essential)
       syncManager.destroy();
       syncManager.initialize();
 
-      // Process any queued operations
-      queueManager.processQueue();
+      // Process any queued operations (blocking - essential)
+      await queueManager.processQueue();
+
+      // Reconnect realtime subscriptions (NON-BLOCKING - optional enhancement)
+      // Realtime is nice-to-have for instant updates, but polling handles correctness
+      realtimeManager.reconnectAll().catch(err =>
+        console.warn('[App] Realtime reconnect failed (non-fatal):', err.message)
+      );
 
       console.log('[App] Switched to household successfully');
     } catch (error) {

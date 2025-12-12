@@ -29,6 +29,15 @@ class RealtimeManager {
 
     // Don't try to be clever with reconnection - let sync handle it
     this.enabled = true;
+
+    // Mobile/iOS detection - these platforms kill WebSockets on background
+    this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    // Connection stability tracking - only reconnect if was stable before
+    this.lastStableConnection = null;
+    this.connectionStableThreshold = 30000; // 30 seconds to be considered "stable"
+    this.lastMessageReceived = null;
   }
 
   /**
@@ -62,6 +71,8 @@ class RealtimeManager {
       this.subscribeToNotifications(householdId);
 
       this.isSubscribed = true;
+      // Mark connection as stable after successful subscription
+      this.lastStableConnection = Date.now();
       console.log('[Realtime] Subscriptions active');
     } catch (error) {
       console.error('[Realtime] Failed to subscribe:', error);
@@ -176,6 +187,11 @@ class RealtimeManager {
   handleChange(tableName, payload) {
     console.log(`[Realtime] ${tableName} ${payload.eventType}`);
 
+    // Track last message for connection health monitoring
+    this.lastMessageReceived = Date.now();
+    // Update stable connection time - we're receiving data
+    this.lastStableConnection = Date.now();
+
     // Debounce to avoid hammering on rapid changes
     this.debouncedReload(tableName);
   }
@@ -227,12 +243,30 @@ class RealtimeManager {
   /**
    * Reconnect all subscriptions
    * Called by connection manager, but we keep it simple
+   *
+   * MOBILE OPTIMIZATION: Don't fight iOS/mobile network behavior.
+   * If the app is backgrounded on mobile, skip reconnection - polling will handle sync.
    */
   async reconnectAll() {
     if (!this.enabled) return;
 
     const household = authManager.getCurrentHousehold();
     if (!household) return;
+
+    // On iOS/mobile, don't reconnect if app is backgrounded
+    // iOS kills WebSocket connections when backgrounded - accept it, polling handles sync
+    if (this.isMobile && document.hidden) {
+      console.log('[Realtime] Mobile in background - skipping reconnect, polling will handle sync');
+      return;
+    }
+
+    // Only reconnect if connection was stable before being interrupted
+    // If connection was unstable, let polling handle sync instead
+    const timeSinceStable = Date.now() - (this.lastStableConnection || 0);
+    if (this.lastStableConnection && timeSinceStable < this.connectionStableThreshold) {
+      console.log('[Realtime] Connection was unstable, letting polling handle sync');
+      return;
+    }
 
     console.log('[Realtime] Reconnecting...');
 
@@ -243,6 +277,24 @@ class RealtimeManager {
     await new Promise(resolve => setTimeout(resolve, 300));
 
     await this.subscribeToHousehold(household.id);
+  }
+
+  /**
+   * Check if realtime connection is healthy
+   * Returns false if we haven't received updates in 60 seconds
+   * Used by sync manager to decide if realtime is working
+   */
+  isConnectionHealthy() {
+    if (!this.isSubscribed || this.channels.size === 0) {
+      return false;
+    }
+    // If we've never received a message, assume unhealthy after 30s
+    if (!this.lastMessageReceived) {
+      const timeSinceSubscribe = Date.now() - (this.lastStableConnection || 0);
+      return timeSinceSubscribe < 30000;
+    }
+    // Healthy if received message in last 60 seconds
+    return (Date.now() - this.lastMessageReceived) < 60000;
   }
 
   /**

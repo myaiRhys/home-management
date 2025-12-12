@@ -183,6 +183,20 @@
   border-top-color: #0077BB;
 }
 
+[data-theme="high-contrast"] .sync-indicator.success {
+  background-color: #0077BB;
+  color: #FFFFFF;
+  border-color: #0077BB;
+  font-weight: 700;
+}
+
+[data-theme="high-contrast"] .sync-indicator.warning {
+  background-color: #EE7733;
+  color: #000000;
+  border-color: #EE7733;
+  font-weight: 700;
+}
+
 [data-theme="high-contrast"] .card-count {
   color: #33BBEE;
 }
@@ -522,6 +536,30 @@ p {
   background-color: var(--primary);
   color: white;
   border-color: var(--primary);
+}
+
+/* Sync indicator - success state (briefly after sync completes) */
+.sync-indicator.success {
+  background-color: var(--success);
+  color: white;
+  border-color: var(--success);
+}
+
+/* Sync indicator - warning state (poor connection quality) */
+.sync-indicator.warning {
+  background-color: var(--warning);
+  color: var(--bg);
+  border-color: var(--warning);
+}
+
+/* Visual pulse animation for items that just synced */
+.just-synced {
+  animation: syncPulse 1s ease;
+}
+
+@keyframes syncPulse {
+  0%, 100% { background-color: var(--card); }
+  50% { background-color: var(--primary); opacity: 0.3; }
 }
 
 /* ===========================
