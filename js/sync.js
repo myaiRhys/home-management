@@ -15,11 +15,12 @@ import { STORAGE_KEYS } from './config.js';
  */
 class SyncManager {
   constructor() {
-    // Polling configuration - shorter intervals for better UX
-    this.POLL_INTERVAL_ACTIVE = 5000;      // 5 seconds when visible
-    this.POLL_INTERVAL_IDLE = 15000;       // 15 seconds if idle but visible
+    // MOBILE-OPTIMIZED POLLING: Faster intervals since polling is now primary
+    // Realtime WebSockets are unreliable on mobile, so polling must be snappy
+    this.POLL_INTERVAL_ACTIVE = 2000;      // 2 seconds when visible (was 5s)
+    this.POLL_INTERVAL_IDLE = 8000;        // 8 seconds if idle (was 15s)
     this.VISIBILITY_SYNC_DELAY = 200;      // Quick sync after visibility change
-    this.IDLE_THRESHOLD = 30000;           // 30 seconds without interaction = idle
+    this.IDLE_THRESHOLD = 20000;           // 20 seconds without interaction = idle (was 30s)
 
     // State
     this.pollTimer = null;
@@ -34,6 +35,15 @@ class SyncManager {
 
     // Listeners for sync events
     this.listeners = new Set();
+
+    // Sync quality metrics for UI feedback
+    this.syncMetrics = {
+      lastSyncTime: null,
+      syncSuccessCount: 0,
+      syncFailureCount: 0,
+      averageSyncDuration: 0,
+      totalSyncDuration: 0
+    };
 
     // Bind methods
     this.handleVisibilityChange = this.handleVisibilityChange.bind(this);
@@ -307,8 +317,13 @@ class SyncManager {
         this.notifyListeners('sync:delta', { changesDetected: true });
       }
 
+      // Update metrics on successful delta sync
+      this.syncMetrics.lastSyncTime = Date.now();
+      this.syncMetrics.syncSuccessCount++;
+
     } catch (error) {
       console.error('[Sync] Delta sync failed:', error);
+      this.syncMetrics.syncFailureCount++;
     } finally {
       this.syncInProgress = false;
     }
@@ -378,15 +393,25 @@ class SyncManager {
       const duration = Date.now() - startTime;
       console.log(`[Sync] Full sync complete (${duration}ms)`);
 
+      // Update sync metrics
+      this.syncMetrics.lastSyncTime = Date.now();
+      this.syncMetrics.syncSuccessCount++;
+      this.syncMetrics.totalSyncDuration += duration;
+      this.syncMetrics.averageSyncDuration =
+        this.syncMetrics.totalSyncDuration / this.syncMetrics.syncSuccessCount;
+
       this.notifyListeners('sync:complete', {
         duration,
         type: 'full',
-        lastSyncTime: Date.now()
+        lastSyncTime: Date.now(),
+        metrics: this.syncMetrics
       });
 
     } catch (error) {
       console.error('[Sync] Full sync failed:', error);
-      this.notifyListeners('sync:error', { error });
+      // Track failure metrics
+      this.syncMetrics.syncFailureCount++;
+      this.notifyListeners('sync:error', { error, metrics: this.syncMetrics });
     } finally {
       this.syncInProgress = false;
     }
@@ -417,6 +442,62 @@ class SyncManager {
     console.log('[Sync] Force sync requested');
     this.syncInProgress = false; // Reset in case stuck
     await this.fullSync();
+  }
+
+  /**
+   * Trigger immediate sync after user creates/updates/deletes item
+   * Ensures other users see changes within 2 seconds
+   * Call this after successful database mutations
+   *
+   * @param {string} table - The table that was modified (shopping, tasks, clifford)
+   */
+  syncAfterUserAction(table) {
+    console.log(`[Sync] Triggering sync after user action on ${table}`);
+
+    // Cancel any pending poll to avoid duplicate syncs
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+
+    // Immediate sync for this specific table
+    this.syncTable(table).catch(err =>
+      console.warn(`[Sync] Post-action sync for ${table} failed:`, err.message)
+    );
+
+    // Restart normal polling after a short delay
+    setTimeout(() => {
+      this.startPolling();
+    }, 500);
+  }
+
+  /**
+   * User-triggered full sync (pull-to-refresh or sync button)
+   * Shows clear feedback, bypasses all throttling
+   */
+  async userTriggeredSync() {
+    console.log('[Sync] User-triggered full sync');
+
+    // Reset any stuck state
+    this.syncInProgress = false;
+
+    // Dispatch event for UI to show immediate feedback
+    this.notifyListeners('sync:user-triggered');
+    window.dispatchEvent(new CustomEvent('sync:user-triggered'));
+
+    try {
+      await this.fullSync();
+
+      // Notify completion
+      this.notifyListeners('sync:user-complete');
+      window.dispatchEvent(new CustomEvent('sync:user-complete'));
+
+    } catch (error) {
+      console.error('[Sync] User-triggered sync failed:', error);
+      this.notifyListeners('sync:user-error', { error });
+      window.dispatchEvent(new CustomEvent('sync:user-error', { detail: { error } }));
+      throw error;
+    }
   }
 
   /**
@@ -458,7 +539,8 @@ class SyncManager {
       isPaused: this.isPaused,
       syncInProgress: this.syncInProgress,
       syncState: this.syncState,
-      isIdle: this.isUserIdle()
+      isIdle: this.isUserIdle(),
+      metrics: this.syncMetrics
     };
   }
 

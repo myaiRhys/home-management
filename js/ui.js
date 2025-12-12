@@ -1326,6 +1326,7 @@ class UIManager {
 
   /**
    * Update sync indicator
+   * Shows sync status, time since last sync, and connection quality
    */
   updateSyncIndicator(syncing = false) {
     const indicator = document.getElementById('sync-indicator');
@@ -1335,18 +1336,37 @@ class UIManager {
     if (!indicator || !icon || !text) return;
 
     const status = syncManager.getStatus();
+    const metrics = status.metrics || {};
+
+    // Remove any existing status classes
+    indicator.classList.remove('syncing', 'warning', 'success');
 
     if (syncing || status.syncInProgress) {
       indicator.classList.add('syncing');
       text.textContent = this.t('syncing');
     } else {
-      indicator.classList.remove('syncing');
+      // Check sync quality from metrics
+      const totalAttempts = (metrics.syncSuccessCount || 0) + (metrics.syncFailureCount || 0);
+      const failureRate = totalAttempts > 0
+        ? (metrics.syncFailureCount || 0) / totalAttempts
+        : 0;
+
+      // Show warning if sync failure rate is high
+      if (failureRate > 0.3 && totalAttempts >= 3) {
+        indicator.classList.add('warning');
+        text.textContent = '⚠️ Poor connection';
+        return;
+      }
 
       // Show time since last sync
-      if (status.lastSyncTime) {
-        const seconds = Math.floor((Date.now() - status.lastSyncTime) / 1000);
-        if (seconds < 5) {
-          text.textContent = this.t('justNow');
+      if (metrics.lastSyncTime) {
+        const seconds = Math.floor((Date.now() - metrics.lastSyncTime) / 1000);
+        if (seconds < 3) {
+          // Show "Synced" briefly after successful sync
+          indicator.classList.add('success');
+          text.textContent = '✓ Synced';
+          // Return to time display after 2 seconds
+          setTimeout(() => this.updateSyncIndicator(), 2000);
         } else if (seconds < 60) {
           text.textContent = this.t('secondsAgo').replace('{n}', seconds);
         } else {
@@ -1378,7 +1398,27 @@ class UIManager {
         this.updateSyncIndicator(true);
       } else if (event === 'sync:complete' || event === 'sync:error') {
         this.updateSyncIndicator(false);
+      } else if (event === 'sync:user-triggered') {
+        // User initiated sync - show feedback immediately
+        this.updateSyncIndicator(true);
+        this.showToast(this.t('syncing') || 'Syncing...', 'info');
+      } else if (event === 'sync:user-complete') {
+        // User sync complete - show success
+        this.updateSyncIndicator(false);
+        this.showToast('✓ All changes synced', 'success');
+      } else if (event === 'sync:user-error') {
+        // User sync failed - show error
+        this.updateSyncIndicator(false);
+        this.showToast('Sync failed - please try again', 'error');
       }
+    });
+
+    // Also listen to window events for user-triggered syncs
+    window.addEventListener('sync:user-triggered', () => {
+      this.updateSyncIndicator(true);
+    });
+    window.addEventListener('sync:user-complete', () => {
+      this.updateSyncIndicator(false);
     });
   }
 
@@ -1547,18 +1587,19 @@ class UIManager {
   }
 
   /**
-   * Force immediate sync
+   * Force immediate sync (user-triggered via button/pull-to-refresh)
+   * Uses the userTriggeredSync which provides better feedback
    */
   async forceSync() {
-    console.log('[UI] Force sync triggered');
-    this.updateSyncIndicator(true);
+    console.log('[UI] User-triggered sync');
 
     try {
-      await syncManager.forceSync();
-      this.showToast(this.t('refreshDone') || 'Synced!', 'success');
+      // Use userTriggeredSync which dispatches events for UI feedback
+      await syncManager.userTriggeredSync();
+      // Toast is handled by the event listener in startSyncIndicatorUpdates
     } catch (error) {
-      console.error('[UI] Force sync failed:', error);
-      this.showToast('Sync failed', 'error');
+      console.error('[UI] User-triggered sync failed:', error);
+      // Error toast is handled by the event listener
     }
   }
 

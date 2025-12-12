@@ -3,6 +3,7 @@ import { store } from './store.js';
 import { connectionManager } from './connection.js';
 import { queueManager } from './queue.js';
 import { connectionGate } from './connection-gate.js';
+import { syncManager } from './sync.js';
 import { DB_OPERATION_TIMEOUT, MAX_RETRY_ATTEMPTS, Tables, OperationType, INVITE_CODE_LENGTH, NotificationType } from './config.js';
 
 /**
@@ -636,6 +637,9 @@ class DatabaseManager {
         store.setShopping([data, ...shopping]);
       }
 
+      // Trigger immediate sync so other clients see changes within 2s
+      syncManager.syncAfterUserAction('shopping');
+
       // Send notification (broadcast to household)
       const prefs = store.getNotificationPreferences();
       if (prefs.shopping_added) {
@@ -654,6 +658,9 @@ class DatabaseManager {
       store.setShopping(
         store.getShopping().map(item => item.id === id ? data : item)
       );
+
+      // Trigger immediate sync so other clients see changes within 2s
+      syncManager.syncAfterUserAction('shopping');
     }
 
     return { data, error };
@@ -668,6 +675,9 @@ class DatabaseManager {
     // If delete failed, reload to restore the item
     if (error) {
       await this.loadShopping();
+    } else {
+      // Trigger immediate sync so other clients see deletion within 2s
+      syncManager.syncAfterUserAction('shopping');
     }
 
     return { data, error };
@@ -720,6 +730,9 @@ class DatabaseManager {
         store.setTasks([data, ...tasks]);
       }
 
+      // Trigger immediate sync so other clients see changes within 2s
+      syncManager.syncAfterUserAction('tasks');
+
       // Send notification if task is assigned to someone
       if (assignee) {
         const prefs = store.getNotificationPreferences();
@@ -742,6 +755,9 @@ class DatabaseManager {
       store.setTasks(
         store.getTasks().map(task => task.id === id ? data : task)
       );
+
+      // Trigger immediate sync so other clients see changes within 2s
+      syncManager.syncAfterUserAction('tasks');
 
       const prefs = store.getNotificationPreferences();
 
@@ -770,6 +786,9 @@ class DatabaseManager {
 
     if (error) {
       await this.loadTasks();
+    } else {
+      // Trigger immediate sync so other clients see deletion within 2s
+      syncManager.syncAfterUserAction('tasks');
     }
 
     return { data, error };
@@ -822,6 +841,9 @@ class DatabaseManager {
         store.setClifford([data, ...cliffords]);
       }
 
+      // Trigger immediate sync so other clients see changes within 2s
+      syncManager.syncAfterUserAction('clifford');
+
       // Send notification if clifford task is assigned to someone
       if (assignee) {
         const prefs = store.getNotificationPreferences();
@@ -844,6 +866,9 @@ class DatabaseManager {
       store.setClifford(
         store.getClifford().map(clifford => clifford.id === id ? data : clifford)
       );
+
+      // Trigger immediate sync so other clients see changes within 2s
+      syncManager.syncAfterUserAction('clifford');
 
       const prefs = store.getNotificationPreferences();
 
@@ -872,6 +897,9 @@ class DatabaseManager {
 
     if (error) {
       await this.loadClifford();
+    } else {
+      // Trigger immediate sync so other clients see deletion within 2s
+      syncManager.syncAfterUserAction('clifford');
     }
 
     return { data, error };
