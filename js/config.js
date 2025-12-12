@@ -1,11 +1,12 @@
 // Firebase Configuration
 export const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyBGw7xJ8X9vY2ZQ1mN3pK4lR5sT6uH7iA9",
+  apiKey: "AIzaSyC9tqJRmUJdzExW_1PbuxPfKZDMQc65VG8",
   authDomain: "thibault-f18c6.firebaseapp.com",
   projectId: "thibault-f18c6",
   storageBucket: "thibault-f18c6.firebasestorage.app",
-  messagingSenderId: "111880043600552224417",
-  appId: "1:111880043600552224417:web:abc123def456"
+  messagingSenderId: "893751591946",
+  appId: "1:893751591946:web:74cd25679f9162af834bf3",
+  measurementId: "G-WPJQM1JJY5"
 };
 
 // App Constants
